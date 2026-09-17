@@ -1,0 +1,18 @@
+{
+  "name": "bili-dyn-publisher",
+  "version": "1.0.0",
+  "description": "Bilibili 动态定时发布后台（本地图片存储，预留 Cloudflare R2）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "reset": "node scripts/reset.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^2.0.1"
+  }
+}
