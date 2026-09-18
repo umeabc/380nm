@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>用户管理 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page" id="page">
+    <div class="card">
+      <div class="card-h">创建用户</div>
+      <div class="frow">
+        <div class="fld" style="max-width:180px"><label>用户名</label><input id="nu-username" placeholder="2-20位字母数字"></div>
+        <div class="fld" style="max-width:180px"><label>显示名（可选）</label><input id="nu-name" placeholder="如：小明"></div>
+        <div class="fld" style="max-width:180px"><label>初始密码</label><input id="nu-password" placeholder="至少 6 位"></div>
+        <div class="fld" style="max-width:140px"><label>角色</label><select id="nu-role"><option value="user">用户</option><option value="admin">管理员</option></select></div>
+        <button class="btn primary" id="btn-user-add">创建用户</button>
+      </div>
+      <div class="hint" style="margin-top:8px">新用户默认拥有自己的模板 / 图库 / 任务 / B站账号空间，互不可见。</div>
+    </div>
+    <div class="card mt">
+      <div class="card-h">用户列表</div>
+      <div id="user-list"></div>
+    </div>
+  </main>
+</div>
+<div id="toast-wrap"></div>
+<script src="/js/common.js"></script>
+<script src="/js/pages/users.js"></script>
+</body>
+</html>

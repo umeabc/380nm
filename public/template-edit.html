@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>编辑模板 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page" id="page">
+    <div class="pagehead">
+      <a class="backlink" href="/templates">← 返回模板列表</a>
+      <div class="ph-row"><h2 id="tpl-form-title">编辑模板</h2></div>
+    </div>
+    <div class="card" style="max-width:760px">
+      <input type="hidden" id="tf-id">
+      <div class="frow" style="margin-bottom:12px">
+        <div class="fld"><label>模板名称</label><input id="tf-name" placeholder="如：每日早报"></div>
+        <div class="fld" style="max-width:140px"><label>图片上限</label><input id="tf-max" type="number" min="0" max="9" value="9"></div>
+      </div>
+      <div class="fld" style="margin-bottom:12px">
+        <label>内容模板（用 <span class="kbd">{{变量}}</span> 占位）</label>
+        <textarea id="tf-content" rows="7" placeholder="例：&#10;每日早报 {{date}}&#10;&#10;{{news}}"></textarea>
+      </div>
+      <label style="font-size:12px;color:var(--muted);font-weight:600">变量定义（Key 需与 {{占位符}} 一致）</label>
+      <div id="tf-vars" style="margin-top:8px"></div>
+      <button class="btn sm" id="btn-add-var" style="margin:4px 0 16px">添加变量</button>
+      <div class="frow">
+        <button class="btn primary" id="btn-tpl-save">保存模板</button>
+        <button class="btn" id="btn-tpl-del" style="color:var(--danger)">删除模板</button>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="toast-wrap"></div>
+<script src="/js/common.js"></script>
+<script src="/js/pages/template-edit.js"></script>
+</body>
+</html>
