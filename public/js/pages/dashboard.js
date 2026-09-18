@@ -56,10 +56,10 @@
           .sort((a, b) => new Date(b.publishedAt || 0) - new Date(a.publishedAt || 0)).slice(0, 5);
         $('#dash-recent').innerHTML = recent.map((j) =>
           `<div class="log-mini">
-             <span class="pill green" style="flex:none">已发布</span>
+             <span class="pill green">已发布</span>
              <span class="lt">${fmtTime(j.publishedAt)}</span>
-             <span style="flex:1;min-width:0">${esc(j.templateName)} · ${esc(j.accountName)} · ${esc(App.snippet(j.text, 40))}</span>
-             ${j.dynamicUrl ? `<a href="${esc(j.dynamicUrl)}" target="_blank" rel="noopener" style="color:var(--blue);flex:none">查看 →</a>` : ''}
+             ${j.dynamicUrl ? `<a class="lm-link" href="${esc(j.dynamicUrl)}" target="_blank" rel="noopener">查看 →</a>` : ''}
+             <span class="lm-text">${esc(j.templateName)} · ${esc(j.accountName)} · ${esc(App.snippet(j.text, 60))}</span>
            </div>`).join('') || '<div class="empty">还没有发布记录</div>';
 
         const last = recent[0];
