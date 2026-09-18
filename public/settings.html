@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>全站设置 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page" id="page">
+    <div class="card" style="max-width:680px">
+      <div class="card-h">链接导入 · 全站凭据与代理</div>
+      <div class="fld" style="margin-bottom:12px">
+        <label>Pixiv PHPSESSID（可选，R18 / 受限作品需要；公开作品留空即可）</label>
+        <input id="set-pixiv" type="password" placeholder="" autocomplete="new-password">
+      </div>
+      <div class="fld" style="margin-bottom:12px">
+        <label>X (Twitter) auth_token（可选，受限推文需要）</label>
+        <input id="set-auth" type="password" placeholder="" autocomplete="new-password">
+      </div>
+      <div class="fld" style="margin-bottom:12px">
+        <label>X (Twitter) ct0（可选，与 auth_token 配套）</label>
+        <input id="set-ct0" type="password" placeholder="" autocomplete="new-password">
+      </div>
+      <div class="fld" style="margin-bottom:12px">
+        <label>下载代理（HTTP 代理，如 http://172.29.133.11:1445；服务器无法直连 Pixiv / X 时必填）</label>
+        <input id="set-proxy" placeholder="http://host:port，留空则直连">
+      </div>
+      <div class="hint" style="margin:4px 0 16px">凭据输入框留空表示保持不变；全站设置对所有用户的链接导入生效。</div>
+      <button class="btn primary" id="btn-save">保存设置</button>
+    </div>
+  </main>
+</div>
+<div id="toast-wrap"></div>
+<script src="/js/common.js"></script>
+<script src="/js/pages/settings.js"></script>
+</body>
+</html>
