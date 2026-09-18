@@ -1,4 +1,4 @@
-# 380nm
+# 380nm - Yet another Bilibili Dynamic Posts Upload/Manage/Publish tool
 
 > B站动态定时发布后台 — 多用户 · 模板化 · 定时自动发布
 
