@@ -14,6 +14,7 @@
 - **待发布队列**：任务持久化，重启不丢；支持编辑、取消、立即发布、重新入队、删除；点击任务进入详情页（完整内容、配图、相关日志、操作按钮）
 - **自动发布**：调度器每 20 秒扫描队列，到点自动上传图片并调用B站接口发布；失败自动重试（最多 3 次），服务重启后中断任务自动重新排队
 - **图库标记**：被已发布任务用过的图片在图库中绿色高亮并显示"已发布 ×N"徽标
+- **链接导入图库**：粘贴 Pixiv 作品页 / X(Twitter) 推文 / 直接图片链接，自动抓取原图入库（多页作品全部导入；实现参考 moeflow：Pixiv 走 `ajax/illust` + pximg Referer，X 走 `cdn.syndication.twimg.com` 公开接口 + `?name=orig` 原图，失败回退 og:image）。服务器无法直连 Pixiv/X 时，管理员在「全站设置」里配置下载代理即可；R18 / 受限内容可在全站设置里配置 Pixiv PHPSESSID 与 X auth_token/ct0（对所有用户生效）
 - **运行日志**：全流程记录，可按用户隔离查看，日志可跳转对应任务
 - **存储可切换**：默认本地磁盘，预留 Cloudflare R2（S3 兼容）驱动
 
@@ -107,6 +108,7 @@ R2_PUBLIC_BASE=https://pub-xxxx.r2.dev   # 用于前端预览
 │   ├── templates.js       默认模板
 │   ├── render.js          模板渲染 {{变量}}
 │   ├── bilibili.js        B站 API 客户端（图片上传 / 发布动态 / 话题搜索）
+│   ├── importers.js       链接导入（Pixiv 作品 / X 推文 / 直接图片链接，支持代理）
 │   ├── scheduler.js       队列调度器
 │   ├── routes.js          REST API（登录 / 用户管理 / 按用户隔离的数据接口）
 │   └── storage/
@@ -127,6 +129,7 @@ R2_PUBLIC_BASE=https://pub-xxxx.r2.dev   # 用于前端预览
 │   ├── template-edit.html /templates/:id 模板编辑
 │   ├── accounts.html      /accounts     B站账号管理
 │   ├── users.html         /users        用户管理（管理员）
+│   ├── settings.html      /settings     全站导入设置（Pixiv/X 凭据与代理，管理员）
 │   └── log.html           /log          运行日志
 ├── scripts/reset.js       清空本地数据
 └── data/                  运行时生成（db.json + uploads/）

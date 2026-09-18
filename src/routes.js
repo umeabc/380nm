@@ -11,8 +11,14 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024, files: 9 }
 });
 
+const { importFromUrl, ImportError } = require('./importers');
+
 const MAX_IMAGES = 9;
+const MAX_IMPORT_IMAGES = 30;
 const COOKIE = 'sid';
+
+// 全站导入设置的机密字段
+const SETTING_SECRETS = ['pixivSession', 'twitterAuth', 'twitterCt0'];
 
 function maskSecret(s) {
   if (!s) return '';
@@ -411,6 +417,95 @@ module.exports = function createRoutes(ctx) {
       }
       store.save();
       res.json({ ok: true, moved });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // ===================== 全站导入设置（管理员） =====================
+  function settingsView() {
+    const s = store.getSettings();
+    return {
+      pixivSession: maskSecret(s.pixivSession),
+      twitterAuth: maskSecret(s.twitterAuth),
+      twitterCt0: maskSecret(s.twitterCt0),
+      importProxy: s.importProxy || '',
+      hasPixivSession: !!s.pixivSession,
+      hasTwitterAuth: !!s.twitterAuth,
+      hasTwitterCt0: !!s.twitterCt0
+    };
+  }
+
+  router.get('/settings', requireAdmin, (req, res) => {
+    res.json({ settings: settingsView() });
+  });
+
+  router.put('/settings', requireAdmin, async (req, res, next) => {
+    try {
+      const patch = {};
+      const body = req.body || {};
+      for (const k of SETTING_SECRETS) {
+        // 机密字段：留空 / 等于掩码值 → 不修改；显式传新值（含空串）→ 覆盖
+        if (body[k] !== undefined && body[k] !== '' && body[k] !== settingsView()[k]) {
+          patch[k] = String(body[k]).trim();
+        }
+      }
+      if (body.importProxy !== undefined) patch.importProxy = String(body.importProxy).trim();
+      await store.updateSettings(patch);
+      await store.addLog('info', `管理员 ${req.user.username} 更新了全站导入设置`, { userId: req.user.id });
+      res.json({ settings: settingsView() });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // ===================== 链接导入图库 =====================
+  router.post('/library/import', requireAuth, async (req, res, next) => {
+    try {
+      const url = String((req.body && req.body.url) || '').trim();
+      if (!url) return res.status(400).json({ error: '请输入链接' });
+      let folderId = null;
+      const fid = String((req.body && req.body.folderId) || '');
+      if (fid && fid !== 'none') {
+        const folder = store.getFolder(fid);
+        if (!folder || folder.userId !== req.user.id) {
+          return res.status(400).json({ error: '目标文件夹不存在' });
+        }
+        folderId = folder.id;
+      }
+      let items;
+      try {
+        items = await importFromUrl(url, store.getSettings());
+      } catch (e) {
+        if (e instanceof ImportError) return res.status(400).json({ error: e.message });
+        throw e;
+      }
+      if (!Array.isArray(items) || !items.length) {
+        return res.status(400).json({ error: '未从该链接获取到图片' });
+      }
+      const capped = items.slice(0, MAX_IMPORT_IMAGES);
+      const saved = [];
+      for (const it of capped) {
+        if (!it.buffer || !it.buffer.length) continue;
+        const { key, url: imgUrl } = await storage.put(it.buffer, it.name, it.contentType);
+        const meta = {
+          key,
+          userId: req.user.id,
+          folderId,
+          name: it.name || key,
+          url: imgUrl,
+          size: it.buffer.length,
+          contentType: it.contentType,
+          createdAt: new Date().toISOString()
+        };
+        await store.addImage(meta);
+        saved.push(meta);
+      }
+      if (!saved.length) return res.status(400).json({ error: '导入失败：没有可用图片' });
+      await store.addLog('info',
+        `链接导入 ${saved.length} 张图片${items.length > MAX_IMPORT_IMAGES ? `（超出上限，已截取前 ${MAX_IMPORT_IMAGES} 张）` : ''}: ${url.slice(0, 100)}`,
+        { userId: req.user.id });
+      res.json({ images: saved, total: items.length });
     } catch (e) {
       next(e);
     }

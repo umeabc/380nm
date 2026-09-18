@@ -140,7 +140,32 @@
     active: 'library',
     title: '图片库',
     ready: async (user) => {
-      if (user.role === 'admin') $('#scope-lib-wrap').style.display = '';
+      if (user.role === 'admin') {
+        $('#scope-lib-wrap').style.display = '';
+        $('#import-settings-link').style.display = '';
+      }
+      $('#btn-import').addEventListener('click', async () => {
+        const url = $('#import-url').value.trim();
+        if (!url) return toast('请输入链接', 'error');
+        const btn = $('#btn-import');
+        btn.disabled = true;
+        btn.textContent = '导入中…';
+        try {
+          const body = { url };
+          const folderId = libUploadFolder();
+          if (folderId) body.folderId = folderId;
+          const r = await api('POST', '/api/library/import', body);
+          await Promise.all([loadImages(), loadFolders()]);
+          renderLibrary();
+          $('#import-url').value = '';
+          toast(`已导入 ${r.images.length} 张图片${r.total > r.images.length ? `（共 ${r.total} 张，超出部分已截取）` : ''}`, 'success');
+        } catch (e) {
+          toast(e.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '导入到当前文件夹';
+        }
+      });
       await Promise.all([loadImages(), loadFolders(), loadJobs(), api('GET', '/api/jobs' + scopeQ()).then((r) => { state.jobs = r.jobs; })]);
       renderLibrary();
 

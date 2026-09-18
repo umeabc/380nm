@@ -19,12 +19,20 @@
         <button class="btn" id="btn-folder-new" style="width:100%;justify-content:center;margin-top:8px">新建文件夹</button>
       </div>
       <div class="card" style="min-width:0">
-        <div class="card-h">图片库<span class="hint-r">
-          <span class="hint" id="lib-stats"></span>
-          <label class="scope-toggle" id="scope-lib-wrap" style="display:none"><input type="checkbox" id="scope-lib"> 查看全部用户</label>
-          <span>悬停图标移动 / 删除</span>
-        </span></div>
-        <div class="drop" id="lib-drop">点击选择或拖拽图片上传（上传到当前所选文件夹）</div>
+            <div class="card-h">图片库<span class="hint-r">
+              <span class="hint" id="lib-stats"></span>
+              <label class="scope-toggle" id="scope-lib-wrap" style="display:none"><input type="checkbox" id="scope-lib"> 查看全部用户</label>
+              <a href="/settings" id="import-settings-link" style="display:none;color:var(--brand)">导入设置</a>
+              <span>悬停图标移动 / 删除</span>
+            </span></div>
+            <div class="frow" style="margin-bottom:14px">
+              <div class="fld" style="flex:3;min-width:220px">
+                <label>链接导入（Pixiv 作品页 / X 推文 / 直接图片链接）</label>
+                <input id="import-url" placeholder="https://www.pixiv.net/artworks/... 或 https://x.com/.../status/...">
+              </div>
+              <button class="btn" id="btn-import" style="min-height:40px">导入到当前文件夹</button>
+            </div>
+            <div class="drop" id="lib-drop">点击选择或拖拽图片上传（上传到当前所选文件夹）</div>
         <input type="file" id="lib-file" accept="image/*" multiple style="display:none">
         <div class="img-grid" id="lib-grid" style="margin-top:14px"></div>
       </div>

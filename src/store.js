@@ -17,7 +17,7 @@ class Store {
   constructor(file) {
     this.file = file;
     this.data = {
-      users: [], sessions: {}, folders: [],
+      users: [], sessions: {}, folders: [], settings: {},
       accounts: [], templates: [], jobs: [], logs: [], images: []
     };
     this._saveTimer = null;
@@ -34,6 +34,7 @@ class Store {
     if (!Array.isArray(this.data.users)) this.data.users = [];
     if (!this.data.sessions || typeof this.data.sessions !== 'object') this.data.sessions = {};
     if (!Array.isArray(this.data.folders)) this.data.folders = [];
+    if (!this.data.settings || typeof this.data.settings !== 'object') this.data.settings = {};
     if (!Array.isArray(this.data.accounts)) this.data.accounts = [];
     if (!Array.isArray(this.data.templates)) this.data.templates = [];
     if (!Array.isArray(this.data.jobs)) this.data.jobs = [];
@@ -230,6 +231,16 @@ class Store {
       if (i.folderId === id) i.folderId = null;
     });
     this.save();
+  }
+
+  // ---------------- 全站设置 ----------------
+  getSettings() {
+    return this.data.settings;
+  }
+  async updateSettings(patch) {
+    Object.assign(this.data.settings, patch);
+    this.save();
+    return this.data.settings;
   }
 
   // ---------------- accounts ----------------

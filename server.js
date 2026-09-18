@@ -33,6 +33,7 @@ async function main() {
   app.get('/templates/:id', page('template-edit'));
   app.get('/accounts', page('accounts'));
   app.get('/users', page('users'));
+  app.get('/settings', page('settings'));
   app.get('/log', page('log'));
 
   app.use(express.static(path.join(__dirname, 'public')));
