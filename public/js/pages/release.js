@@ -5,7 +5,7 @@
   const state = {
     accounts: [], templates: [], images: [], folders: [], recentTopics: [], jobs: [],
     selected: [], pickFolder: 'all', pickPage: 1,
-    topic: null, atMentions: []
+    topic: null, atMentions: [], lastVarFocus: null
   };
   let topicEditor = null;
   const IMG_PER_PAGE = 6;
@@ -33,6 +33,12 @@
     }).join('') || '<div class="empty">该模板没有变量，可直接使用</div>';
     $$('#var-fields [data-key]').forEach((el) => el.addEventListener('input', updatePreview));
     $$('#var-fields input[data-mention]').forEach((el) => bindAtInput(el));
+    // 记录最近聚焦的变量输入框，供 @提及卡片插入
+    $$('#var-fields input[data-key], #var-fields textarea[data-key]').forEach((el) => {
+      const track = () => { state.lastVarFocus = el; };
+      el.addEventListener('focus', track);
+      el.addEventListener('click', track);
+    });
     const max = tpl.maxImages || 0;
     if (state.selected.length > max) {
       state.selected = state.selected.slice(0, max);
@@ -52,17 +58,36 @@
     return vars;
   }
   function collectMentions() {
-    const list = [];
+    // 已登记的提及（卡片选择 / 变量内搜索选择）
+    const list = state.atMentions.slice();
+    // At 变量中手输但未登记的名称 → 交给服务端按名称解析
     $$('#var-fields input[data-mention]').forEach((el) => {
-      const name = (el.dataset.mention || el.value || '').replace(/^@/, '').trim();
-      if (name) list.push({ name, uid: el.dataset.uid || '' });
+      const name = (el.value || '').replace(/^@/, '').trim();
+      if (name && !list.some((m) => m.name === name)) list.push({ name, uid: el.dataset.uid || '' });
     });
     return list;
+  }
+  /** 把 @昵称 插入最近聚焦的变量输入框光标处；未聚焦时仅登记（发布时追加到末尾） */
+  function insertMentionAtFocus(name, uid) {
+    if (!state.atMentions.some((m) => m.uid === uid)) state.atMentions.push({ uid, name });
+    const el = state.lastVarFocus;
+    if (el && document.contains(el)) {
+      const mention = '@' + name + ' ';
+      const pos = el.selectionStart != null ? el.selectionStart : el.value.length;
+      const end = el.selectionEnd != null ? el.selectionEnd : pos;
+      el.value = el.value.slice(0, pos) + mention + el.value.slice(end);
+      const newPos = pos + mention.length;
+      try { el.setSelectionRange(newPos, newPos); el.focus(); } catch (e) { /* ignore */ }
+      el._skipSearch = true;
+      el.dispatchEvent(new Event('input'));
+    }
+    renderAtPills();
   }
   function bindAtInput(input) {
     const dd = input.parentNode.querySelector('.topic-dd');
     const hide = () => { dd.style.display = 'none'; };
     const search = debounce(async () => {
+      if (input._skipSearch) { input._skipSearch = false; hide(); return; }
       const kw = input.value.trim().replace(/^@/, '');
       if (!kw) { hide(); return; }
       dd.style.display = '';
@@ -84,6 +109,10 @@
         input.value = '@' + el.dataset.name;
         input.dataset.mention = el.dataset.name;
         input.dataset.uid = el.dataset.uid;
+        if (!state.atMentions.some((m) => m.uid === el.dataset.uid)) {
+          state.atMentions.push({ uid: el.dataset.uid, name: el.dataset.name });
+          renderAtPills();
+        }
         hide();
         updatePreview();
       }));
@@ -285,10 +314,7 @@
       }
       $$('.ti', dd).forEach((el) => el.addEventListener('mousedown', () => {
         if (!el.dataset.uid) return;
-        if (!state.atMentions.some((m) => m.uid === el.dataset.uid)) {
-          state.atMentions.push({ uid: el.dataset.uid, name: el.dataset.name });
-          renderAtPills();
-        }
+        insertMentionAtFocus(el.dataset.name, el.dataset.uid);
         input.value = '';
         hide();
       }));
