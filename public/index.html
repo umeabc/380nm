@@ -212,7 +212,9 @@ body.anon .sidebar,body.anon .topbar{display:none}
 .list-item .t{font-weight:700;font-size:13.5px}
 .list-item .s{font-size:12px;color:var(--muted);margin-top:2px}
 .acc-card{display:flex;gap:14px;align-items:center;border:1px solid var(--line);border-radius:var(--r);background:#fff;padding:14px 16px;margin-bottom:10px}
-.avatar{width:44px;height:44px;border-radius:50%;background:#eae8df;flex:none;object-fit:cover}
+.avatar-wrap{position:relative;width:44px;height:44px;flex:none}
+.avatar-fallback{width:100%;height:100%;border-radius:50%;background:#eae8df;color:#7b7869;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px}
+.avatar-img{position:absolute;inset:0;width:100%;height:100%;border-radius:50%;object-fit:cover}
 .acc-card .info{flex:1;min-width:0}
 .acc-card .mono{font-family:Consolas,monospace;font-size:11.5px;color:var(--muted)}
 .log-line{display:flex;gap:12px;padding:9px 2px;border-bottom:1px solid var(--line2);font-size:13px;align-items:baseline}
@@ -833,7 +835,7 @@ function updatePreview() {
 function renderSelected() {
   $('#sel-strip').innerHTML = state.selected.map((img, i) =>
     `<div class="cell on" data-rm="${esc(img.key)}" title="点击移除">
-       <img src="${esc(img.url)}" alt=""><span class="ord">${i + 1}</span>
+       <img referrerpolicy="no-referrer" src="${esc(img.url)}" alt=""><span class="ord">${i + 1}</span>
      </div>`).join('');
 }
 function renderImageGrid() {
@@ -843,7 +845,7 @@ function renderImageGrid() {
     const pub = pubMap[img.key];
     return `<div class="cell ${selKeys.includes(img.key) ? 'on' : ''} ${pub ? 'pub' : ''}" data-key="${esc(img.key)}"
                 title="${esc(img.name)}${pubTip(pub)}">
-       <img src="${esc(img.url)}" alt="${esc(img.name)}" loading="lazy">
+       <img referrerpolicy="no-referrer" src="${esc(img.url)}" alt="${esc(img.name)}" loading="lazy">
        <span class="ord">${selKeys.indexOf(img.key) + 1 || ''}</span>
        ${pub ? `<span class="pub-badge">已发布</span>` : ''}
      </div>`;
@@ -1133,7 +1135,7 @@ function renderJobDetailSkeleton(j) {
         <div class="card">
           <div class="card-h">配图（${imgs.length}）</div>
           ${imgs.length ? `<div class="img-grid">${imgs.map((i) =>
-            `<a class="cell" href="${esc(i.url)}" target="_blank" rel="noopener"><img src="${esc(i.url)}" alt="" loading="lazy"></a>`).join('')}</div>`
+            `<a class="cell" href="${esc(i.url)}" target="_blank" rel="noopener"><img referrerpolicy="no-referrer" src="${esc(i.url)}" alt="" loading="lazy"></a>`).join('')}</div>`
           : '<div class="empty">无配图</div>'}
         </div>
       </div>
@@ -1205,7 +1207,7 @@ function renderJobEditForm(j) {
       const pub = pubMap[img.key];
       return `<div class="cell ${keys().includes(img.key) ? 'on' : ''} ${pub ? 'pub' : ''}" data-ekey="${esc(img.key)}"
                 title="${esc(img.name)}${pubTip(pub)}">
-         <img src="${esc(img.url)}" alt="" loading="lazy">
+         <img referrerpolicy="no-referrer" src="${esc(img.url)}" alt="" loading="lazy">
          <span class="ord">${keys().indexOf(img.key) + 1 || ''}</span>
          ${pub ? `<span class="pub-badge">已发布</span>` : ''}
        </div>`;
@@ -1332,7 +1334,7 @@ function renderLibrary() {
     const pub = pubMap[img.key];
     return `<div class="cell ${pub ? 'pub' : ''}" data-lib="${esc(img.key)}"
                 title="${esc(img.name)}（${fmtTime(img.createdAt)}${pubTip(pub)}）">
-       <img src="${esc(img.url)}" alt="" loading="lazy">
+       <img referrerpolicy="no-referrer" src="${esc(img.url)}" alt="" loading="lazy">
        ${pub ? `<span class="pub-badge">已发布${pub.count > 1 ? ' ×' + pub.count : ''}</span>` : ''}
        <button class="del" data-libdel="${esc(img.key)}" title="删除">×</button>
      </div>`;
@@ -1442,7 +1444,10 @@ async function deleteTpl() {
 function renderAccounts() {
   $('#acc-list').innerHTML = state.accounts.map((a) =>
     `<div class="acc-card">
-       <img class="avatar" src="${esc(a.avatar)}" alt="" onerror="this.style.visibility='hidden'">
+       <div class="avatar-wrap">
+         <div class="avatar-fallback">${esc((a.uname || a.name || '?').slice(0, 1).toUpperCase())}</div>
+         ${a.avatar ? `<img class="avatar-img" src="${esc(a.avatar)}" alt="" referrerpolicy="no-referrer" onerror="this.remove()">` : ''}
+       </div>
        <div class="info">
          <div><b>${esc(a.uname || a.name)}</b> <span class="hint">${esc(a.name)}</span></div>
          <div class="mono">uid: ${a.uid || '-'} · SESSDATA: ${esc(a.sessdata)} · bili_jct: ${esc(a.bili_jct)}</div>
