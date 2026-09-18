@@ -15,7 +15,8 @@ async function fetchJson(url, options = {}, timeoutMs = 20000) {
 }
 
 /** 把纯文本 + @提及列表 组装为动态内容节点序列：
- *  普通文本 → {raw_text, type:1, biz_id:''}；@用户 → {raw_text:'@昵称 ', type:2, biz_id:'<uid>'}
+ *  普通文本 → {raw_text, type:1, biz_id:''}；@用户 → {raw_text:'昵称 ', type:2, biz_id:'<uid>'}
+ *  注意：type:2 节点由B站渲染时自动加 @ 前缀，raw_text 里不能再带 @（否则显示 @@昵称）
  *  未在文本中出现的提及会追加到末尾 */
 function buildContents(text, mentions = []) {
   const nodes = [];
@@ -33,14 +34,14 @@ function buildContents(text, mentions = []) {
   for (const it of hits) {
     if (it.idx < pos) continue;
     pushText(text.slice(pos, it.idx));
-    nodes.push({ raw_text: '@' + it.m.name + ' ', type: 2, biz_id: String(it.m.uid) });
+    nodes.push({ raw_text: it.m.name + ' ', type: 2, biz_id: String(it.m.uid) });
     pos = it.idx + it.len;
   }
   pushText(text.slice(pos));
   for (const m of mentions || []) {
-    // 文本中未出现的提及（如编辑时被删掉）追加到末尾，避免丢失
+    // 文本中未出现的提及（如发布页按钮添加的）追加到末尾，避免丢失
     if (m && m.name && m.uid && !nodes.some((n) => n.type === 2 && n.biz_id === String(m.uid))) {
-      nodes.push({ raw_text: '@' + m.name + ' ', type: 2, biz_id: String(m.uid) });
+      nodes.push({ raw_text: m.name + ' ', type: 2, biz_id: String(m.uid) });
     }
   }
   if (!nodes.length) nodes.push({ raw_text: text, type: 1, biz_id: '' });

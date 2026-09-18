@@ -5,7 +5,7 @@
   const state = {
     accounts: [], templates: [], images: [], folders: [], recentTopics: [], jobs: [],
     selected: [], pickFolder: 'all', pickPage: 1,
-    topic: null
+    topic: null, atMentions: []
   };
   let topicEditor = null;
   const IMG_PER_PAGE = 6;
@@ -254,6 +254,49 @@
       list.map((t, i) => `<span class="pill" data-rt="${i}" title="点击选用 #${esc(t.name)}#">#${esc(t.name)}#</span>`).join('');
   }
 
+  /* ---------------- @提及一键插入 ---------------- */
+  function renderAtPills() {
+    $('#at-pills').innerHTML = state.atMentions.map((m, i) =>
+      `<span class="pill dark">@${esc(m.name)}<button class="icon-btn" data-rmat="${i}" style="width:16px;height:16px;color:#fff" title="移除">${icon('x', 11)}</button></span>`).join('');
+    $$('#at-pills [data-rmat]').forEach((b) => b.addEventListener('click', () => {
+      state.atMentions.splice(Number(b.dataset.rmat), 1);
+      renderAtPills();
+    }));
+  }
+  function bindAtCard() {
+    const input = $('#at-input'), dd = $('#at-dd');
+    const hide = () => { dd.style.display = 'none'; };
+    const search = debounce(async () => {
+      const kw = input.value.trim().replace(/^@/, '');
+      if (!kw) { hide(); return; }
+      dd.style.display = '';
+      dd.innerHTML = '<div class="ti hint-ti">搜索中…</div>';
+      try {
+        const accountId = $('#sel-account').value;
+        const r = await api('GET', '/api/mentions/search?keywords=' + encodeURIComponent(kw)
+          + (accountId ? '&accountId=' + encodeURIComponent(accountId) : ''));
+        const users = r.users || [];
+        dd.innerHTML = users.length
+          ? users.map((u) => `<div class="ti" data-uid="${esc(u.uid)}" data-name="${esc(u.name)}">
+               <span>@${esc(u.name)}</span><span class="st">${u.fans ? Number(u.fans).toLocaleString() + ' 粉丝' : ''}</span></div>`).join('')
+          : '<div class="ti hint-ti">未找到用户</div>';
+      } catch (e) {
+        dd.innerHTML = `<div class="ti hint-ti">${esc(e.message)}</div>`;
+      }
+      $$('.ti', dd).forEach((el) => el.addEventListener('mousedown', () => {
+        if (!el.dataset.uid) return;
+        if (!state.atMentions.some((m) => m.uid === el.dataset.uid)) {
+          state.atMentions.push({ uid: el.dataset.uid, name: el.dataset.name });
+          renderAtPills();
+        }
+        input.value = '';
+        hide();
+      }));
+    }, 350);
+    input.addEventListener('input', search);
+    input.addEventListener('blur', () => setTimeout(hide, 200));
+  }
+
   /* ---------------- 提交 ---------------- */
   function presetDate(kind) {
     const d = new Date();
@@ -282,13 +325,15 @@
         accountId,
         variables: collectVariables(),
         images: state.selected,
-        topic: topicEditor ? topicEditor.collect() : null,
-        title: $('#dyn-title').value.trim(),
-        mentions: collectMentions(),
-        scheduledAt: when.toISOString()
-      });
-      toast('已加入发布队列', 'success');
-      state.selected = [];
+      topic: topicEditor ? topicEditor.collect() : null,
+      title: $('#dyn-title').value.trim(),
+      mentions: collectMentions().concat(state.atMentions),
+      scheduledAt: when.toISOString()
+    });
+    toast('已加入发布队列', 'success');
+    state.selected = [];
+    state.atMentions = [];
+    renderAtPills();
       $$('#var-fields [data-key]').forEach((el) => {
         el.value = '';
         if (el.dataset.mention !== undefined) { el.dataset.mention = ''; el.dataset.uid = ''; }
@@ -341,6 +386,7 @@
       if (state.templates.length) tplSel.value = state.templates[0].id;
 
       topicEditor = bindTopicEditor();
+      bindAtCard();
       renderRecentTopics();
       renderPickFolders();
       onTemplateChange();
