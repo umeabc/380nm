@@ -88,8 +88,19 @@ body.anon .sidebar,body.anon .topbar{display:none}
 .card-h{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;margin-bottom:14px}
 .card-h .hint-r{margin-left:auto;font-weight:400;display:flex;align-items:center;gap:12px}
 .grid2{display:grid;grid-template-columns:1.05fr .95fr;gap:16px;align-items:start}
+.split{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start}
+.split > *{min-width:0}
 .grid2 > *{min-width:0}
 @media(max-width:900px){.grid2{grid-template-columns:1fr}}
+@media(max-width:860px){.split{grid-template-columns:1fr}}
+.pick-body{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:start}
+.pick-folders{display:flex;flex-direction:column;gap:2px;max-height:300px;overflow:auto}
+.pick-right{min-width:0}
+.pick-right .img-grid{max-height:250px}
+.pick-pager{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:10px;font-size:12.5px;color:var(--muted)}
+.pick-pager button{border:1px solid var(--line);background:#fff;border-radius:8px;padding:4px 12px;font-size:12.5px;color:var(--ink)}
+.pick-pager button:hover:not(:disabled){border-color:#b9b6a6;background:#f6f5ef}
+.pick-pager button:disabled{opacity:.4;cursor:not-allowed}
 .fld{display:flex;flex-direction:column;gap:6px;min-width:0}
 .fld > label{font-size:12px;color:var(--muted);font-weight:600}
 .frow{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
@@ -309,6 +320,10 @@ body.anon .sidebar,body.anon .topbar{display:none}
               </div>
             </div>
             <div class="card">
+              <div class="card-h">动态标题<span class="hint hint-r">可选 · <span id="title-count">0</span>/20 字</span></div>
+              <input id="dyn-title" maxlength="20" placeholder="给这条动态起个标题（图文动态显示在图片上方）">
+            </div>
+            <div class="card">
               <div class="card-h">模板变量<span class="hint hint-r">使用 <span class="kbd">{{占位符}}</span> 自动填充</span></div>
               <div id="var-fields"></div>
             </div>
@@ -329,15 +344,17 @@ body.anon .sidebar,body.anon .topbar{display:none}
           </div>
           <div class="stack">
             <div class="card">
-              <div class="card-h">动态标题<span class="hint hint-r">可选 · <span id="title-count">0</span>/20 字</span></div>
-              <input id="dyn-title" maxlength="20" placeholder="给这条动态起个标题（图文动态显示在图片上方）">
-            </div>
-            <div class="card">
-              <div class="card-h">配图<span class="hint hint-r">最多 <b id="img-max">9</b> 张，按选择顺序发布</span></div>
-              <div class="drop" id="drop">点击选择或拖拽图片到此处上传（自动存入图片库）</div>
+              <div class="card-h">配图<span class="hint-r"><button class="btn sm" id="pick-upload-btn" type="button">上传图片</button><span class="hint">最多 <b id="img-max">9</b> 张，按选择顺序发布</span></span></div>
               <input type="file" id="file-input" accept="image/*" multiple style="display:none">
               <div class="sel-strip" id="sel-strip"></div>
-              <div class="img-grid" id="img-grid" style="margin-top:12px"></div>
+              <div class="pick-body">
+                <div class="pick-folders" id="pick-folders"></div>
+                <div class="pick-right">
+                  <div class="img-grid" id="img-grid"></div>
+                  <div class="pick-pager" id="pick-pager"></div>
+                </div>
+              </div>
+              <div class="hint" style="margin-top:8px">左侧选择文件夹浏览；上传的图片存入当前所选文件夹（“全部图片 / 未分类”时存入未分类）。</div>
             </div>
             <div class="card">
               <div class="card-h">话题<span class="hint hint-r">可选 · 绑定B站话题并追加 #话题名# 到正文</span></div>
@@ -579,10 +596,13 @@ const state = {
   folders: [],       // 图库文件夹
   libFolder: 'all',  // 图库当前视图: all | none | folderId
   moveKey: null,     // 正在移动的图片 key
+  pickFolder: 'all', // 发布页配图选择器当前文件夹
+  pickPage: 1,       // 配图选择器当前页码
   topic: null,       // 发布页已选话题 {id, name}
   editTopic: null,   // 任务编辑页已选话题
   recentTopics: []   // 当前用户最近使用的话题
 };
+const IMG_PER_PAGE = 6;
 let topicEditor = null;   // 发布页话题选择器
 let editTopicEditor = null; // 编辑页话题选择器
 function debounce(fn, ms) {
@@ -836,6 +856,7 @@ function renderCompose() {
     () => state.topic, (v) => { state.topic = v; }
   );
   renderRecentTopics();
+  renderPickFolders();
   onTemplateChange();
 }
 function currentTemplate() {
@@ -883,7 +904,13 @@ function renderSelected() {
 function renderImageGrid() {
   const selKeys = state.selected.map((i) => i.key);
   const pubMap = publishedImageMap();
-  $('#img-grid').innerHTML = state.images.map((img) => {
+  const list = state.images.filter((i) =>
+    state.pickFolder === 'all' ? true : state.pickFolder === 'none' ? !i.folderId : i.folderId === state.pickFolder);
+  const pages = Math.max(1, Math.ceil(list.length / IMG_PER_PAGE));
+  if (state.pickPage > pages) state.pickPage = pages;
+  if (state.pickPage < 1) state.pickPage = 1;
+  const pageItems = list.slice((state.pickPage - 1) * IMG_PER_PAGE, state.pickPage * IMG_PER_PAGE);
+  $('#img-grid').innerHTML = pageItems.map((img) => {
     const pub = pubMap[img.key];
     return `<div class="cell ${selKeys.includes(img.key) ? 'on' : ''} ${pub ? 'pub' : ''}" data-key="${esc(img.key)}"
                 title="${esc(img.name)}${pubTip(pub)}">
@@ -891,7 +918,12 @@ function renderImageGrid() {
        <span class="ord">${selKeys.indexOf(img.key) + 1 || ''}</span>
        ${pub ? `<span class="pub-badge">已发布</span>` : ''}
      </div>`;
-  }).join('') || '<div class="empty">图片库为空，先上传图片</div>';
+  }).join('') || '<div class="empty">该文件夹暂无图片</div>';
+  const pg = $('#pick-pager');
+  if (list.length <= IMG_PER_PAGE) { pg.innerHTML = ''; return; }
+  pg.innerHTML = `<button id="pg-prev" type="button" ${state.pickPage <= 1 ? 'disabled' : ''}>上一页</button>
+    <span>第 ${state.pickPage} / ${pages} 页 · 共 ${list.length} 张</span>
+    <button id="pg-next" type="button" ${state.pickPage >= pages ? 'disabled' : ''}>下一页</button>`;
 }
 function toggleImage(key) {
   const tpl = currentTemplate();
@@ -916,7 +948,11 @@ async function uploadFiles(files, opts = {}) {
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || '上传失败');
   await loadImages();
-  if (!opts.lib) {
+  if (opts.lib) {
+    renderLibrary();
+  } else {
+    state.pickPage = 1;
+    renderPickFolders();
     const tpl = currentTemplate();
     const max = tpl ? (tpl.maxImages || 0) : 9;
     for (const img of data.images) {
@@ -929,7 +965,6 @@ async function uploadFiles(files, opts = {}) {
     renderImageGrid();
     updatePreview();
   }
-  renderLibrary();
   toast(`已上传 ${data.images.length} 张图片${opts.lib && opts.folderId ? '到当前文件夹' : ''}`, 'success');
 }
 /* ---------------- 话题选择器 ----------------
@@ -1393,12 +1428,12 @@ function pubTip(pub) {
 }
 
 /* ---------------- 图库文件夹 ---------------- */
-function folderRow(key, name, count, withOps) {
+function folderRow(key, name, count, withOps, activeKey) {
   const ops = withOps
     ? `<button class="icon-btn" data-fldedit="${esc(key)}" title="重命名">${icon('pencil', 13)}</button>
        <button class="icon-btn danger" data-flddel="${esc(key)}" title="删除文件夹（图片移至未分类）">${icon('trash', 13)}</button>`
     : '';
-  return `<div class="lib-frow ${state.libFolder === key ? 'active' : ''}" data-fld="${esc(key)}">
+  return `<div class="lib-frow ${activeKey === key ? 'active' : ''}" data-fld="${esc(key)}">
     <span class="lib-fname">${esc(name)}</span><span class="hint">${count}</span>${ops}
   </div>`;
 }
@@ -1411,10 +1446,20 @@ function renderFolderList() {
   }
   $('#btn-folder-new').style.display = '';
   const cnt = (fid) => state.images.filter((i) => (i.folderId || null) === fid).length;
-  let rows = folderRow('all', '全部图片', state.images.length, false) +
-    folderRow('none', '未分类', cnt(null), false);
-  for (const f of state.folders || []) rows += folderRow(f.id, f.name, cnt(f.id), true);
+  let rows = folderRow('all', '全部图片', state.images.length, false, state.libFolder) +
+    folderRow('none', '未分类', cnt(null), false, state.libFolder);
+  for (const f of state.folders || []) rows += folderRow(f.id, f.name, cnt(f.id), true, state.libFolder);
   $('#folder-list').innerHTML = rows;
+}
+function renderPickFolders() {
+  const cnt = (fid) => state.images.filter((i) => (i.folderId || null) === fid).length;
+  let rows = folderRow('all', '全部图片', state.images.length, false, state.pickFolder) +
+    folderRow('none', '未分类', cnt(null), false, state.pickFolder);
+  for (const f of state.folders || []) rows += folderRow(f.id, f.name, cnt(f.id), false, state.pickFolder);
+  $('#pick-folders').innerHTML = rows;
+}
+function pickUploadFolder() {
+  return state.pickFolder !== 'all' && state.pickFolder !== 'none' ? state.pickFolder : null;
 }
 
 /* ---------------- 图片库 ---------------- */
@@ -1797,13 +1842,27 @@ function bind() {
     if (p && topicEditor) topicEditor.set(state.recentTopics[+p.dataset.rt]);
   });
 
-  // 上传（发布页）
-  const drop = $('#drop'), fi = $('#file-input');
-  drop.addEventListener('click', () => fi.click());
-  fi.addEventListener('change', () => { uploadFiles(fi.files).catch((e) => toast(e.message, 'error')); fi.value = ''; });
-  ['dragover', 'dragenter'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
-  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
-  drop.addEventListener('drop', (e) => { uploadFiles(e.dataTransfer.files).catch((e2) => toast(e2.message, 'error')); });
+  // 上传与配图选择器（发布页）
+  const fi = $('#file-input');
+  $('#pick-upload-btn').addEventListener('click', () => fi.click());
+  fi.addEventListener('change', () => { uploadFiles(fi.files, { folderId: pickUploadFolder() }).catch((e) => toast(e.message, 'error')); fi.value = ''; });
+  $('#pick-folders').addEventListener('click', (e) => {
+    const row = e.target.closest('[data-fld]');
+    if (!row) return;
+    if (state.pickFolder !== row.dataset.fld) {
+      state.pickFolder = row.dataset.fld;
+      state.pickPage = 1;
+    }
+    renderPickFolders();
+    renderImageGrid();
+  });
+  $('#pick-pager').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    if (b.id === 'pg-prev') state.pickPage--;
+    if (b.id === 'pg-next') state.pickPage++;
+    renderImageGrid();
+  });
 
   // 上传（图片库，上传到当前所选文件夹）
   const libUploadFolder = () =>
