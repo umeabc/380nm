@@ -13,11 +13,96 @@
 
 let undici = null;
 try { undici = require('undici'); } catch (e) { /* 未安装 undici 时不支持代理 */ }
+const http2 = require('http2');
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 const PIXIV_ARTWORK_RE = /pixiv\.net\/(?:artworks|i)\/?(\d+)/;
 const TWEET_URL_RE = /(?:status|statuses)\/(\d+)/;
 const TWEET_HOST_RE = /^https?:\/\/(www\.)?(x|twitter)\.com\//i;
+
+/* 部分站点的 Cloudflare 会拦截 HTTP/1.1 客户端（无论 TLS 指纹如何），
+   需要 HTTP/2 + Chrome 风格 TLS 选项才能通过（实测 cdn.donmai.us 即如此，
+   moeflow 用 curl_cffi impersonate="chrome" 解决同一问题，此处用 Node http2 等效实现） */
+const H2_TLS_OPTS = {
+  ciphers: [
+    'TLS_AES_128_GCM_SHA256', 'TLS_AES_256_GCM_SHA384', 'TLS_CHACHA20_POLY1305_SHA256',
+    'ECDHE-ECDSA-AES128-GCM-SHA256', 'ECDHE-RSA-AES128-GCM-SHA256',
+    'ECDHE-ECDSA-AES256-GCM-SHA384', 'ECDHE-RSA-AES256-GCM-SHA384',
+    'ECDHE-ECDSA-CHACHA20-POLY1305', 'ECDHE-RSA-CHACHA20-POLY1305',
+    'ECDHE-RSA-AES256-SHA', 'ECDHE-RSA-AES128-SHA',
+    'ECDHE-ECDSA-AES256-SHA', 'ECDHE-ECDSA-AES128-SHA',
+    'AES256-GCM-SHA384', 'AES128-GCM-SHA256'
+  ].join(':'),
+  ecdhCurve: 'X25519:P-256:P-384',
+  sigalgs: 'ecdsa_secp256r1_sha256:rsa_pss_rsae_sha256:rsa_pkcs1_sha256:ecdsa_secp384r1_sha384:rsa_pss_rsae_sha384:rsa_pkcs1_sha384:rsa_pss_rsae_sha512:rsa_pkcs1_sha512',
+  minVersion: 'TLSv1.2',
+  ALPNProtocols: ['h2']
+};
+
+/** HTTP/2 GET（Chrome 风格 TLS），用于绕过封锁 HTTP/1.1 的 CDN */
+function h2Get(url, { headers = {}, timeout = 60000 } = {}) {
+  return new Promise((resolve, reject) => {
+    let u;
+    try { u = new URL(url); } catch (e) { return reject(new ImportError('无效链接')); }
+    const session = http2.connect(u.origin, {
+      ...H2_TLS_OPTS,
+      // 大接收窗口：默认 64KB 流控窗口在高延迟链路上会限速（实测 donmai 4.6MB 从 20s+ 卡死提升到 6s 完成）
+      settings: { initialWindowSize: 33554432 }
+    });
+    let settled = false;
+    let status = 0;
+    let contentType = '';
+    let contentLength = 0;
+    let received = 0;
+    const chunks = [];
+    const finish = (err, data) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { session.close(); } catch (e) { /* ignore */ }
+      if (err) reject(err);
+      else resolve(data);
+    };
+    const timer = setTimeout(() => {
+      session.destroy();
+      finish(new ImportError('下载超时（HTTP/2）'));
+    }, timeout);
+    session.on('error', (e) => finish(e));
+    const req = session.request({
+      ':method': 'GET',
+      ':path': u.pathname + u.search,
+      'user-agent': UA,
+      accept: '*/*',
+      'accept-encoding': 'identity',
+      ...headers
+    });
+    req.on('response', (h) => {
+      status = h[':status'] || 0;
+      contentType = h['content-type'] || '';
+      contentLength = Number(h['content-length']) || 0;
+      try { session.setLocalWindowSize(67108864); } catch (e) { /* 旧版 Node 无此 API 时忽略 */ }
+    });
+    req.on('data', (c) => {
+      chunks.push(c);
+      received += c.length;
+      // Cloudflare 等对 HTTP/2 可能迟迟不发 END_STREAM，按 Content-Length 收满即完成
+      if (contentLength && received >= contentLength) {
+        finish(null, { status, contentType, buffer: Buffer.concat(chunks) });
+      }
+    });
+    req.on('end', () => finish(null, { status, contentType, buffer: Buffer.concat(chunks) }));
+    req.on('close', () => {
+      if (settled) return;
+      if (contentLength && received < contentLength) {
+        finish(new ImportError(`下载中断（收到 ${received}/${contentLength} 字节）`));
+      } else {
+        finish(null, { status, contentType, buffer: Buffer.concat(chunks) });
+      }
+    });
+    req.on('error', (e) => finish(e));
+    req.end();
+  });
+}
 
 class ImportError extends Error {
   constructor(message) {
@@ -69,6 +154,22 @@ async function downloadImage(url, { proxy, headers = {}, timeout = 60000 } = {})
   } catch (e) {
     const cause = (e.cause && e.cause.message) || e.message;
     throw new ImportError('下载图片失败（网络错误：' + cause + '）：' + String(url).slice(0, 90));
+  }
+  // 拦截 HTTP/1.1 的 CDN（如 cdn.donmai.us 的 Cloudflare）：改用 HTTP/2 + Chrome 风格 TLS 直连重试
+  if (res.status === 403 || res.status === 429) {
+    let h2;
+    try {
+      h2 = await h2Get(url, { headers, timeout });
+    } catch (e) {
+      if (e instanceof ImportError) throw e;
+      /* h2 也失败时沿用原 403 错误 */
+    }
+    if (h2 && h2.status >= 200 && h2.status < 300) {
+      return { buffer: h2.buffer, contentType: h2.contentType };
+    }
+    if (h2 && h2.status >= 400 && h2.status !== 403 && h2.status !== 429) {
+      throw new ImportError(`下载图片失败（HTTP ${h2.status}）：${String(url).slice(0, 90)}`);
+    }
   }
   if (!res.ok) throw new ImportError(`下载图片失败（HTTP ${res.status}）：${String(url).slice(0, 90)}`);
   const ab = await res.arrayBuffer();
