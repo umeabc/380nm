@@ -8,8 +8,9 @@
       <input class="v-key" placeholder="Key（英文/中文）" value="${esc(v.key || '')}">
       <input class="v-label" placeholder="显示名称" value="${esc(v.label || '')}">
       <select class="v-type">
-        <option value="text"${v.type !== 'textarea' ? ' selected' : ''}>单行文本</option>
+        <option value="text"${v.type !== 'textarea' && v.type !== 'at' ? ' selected' : ''}>单行文本</option>
         <option value="textarea"${v.type === 'textarea' ? ' selected' : ''}>多行文本</option>
+        <option value="at"${v.type === 'at' ? ' selected' : ''}>At用户</option>
       </select>
       <input class="v-ph" placeholder="占位提示（可选）" value="${esc(v.placeholder || '')}">
       <button class="icon-btn danger" onclick="this.parentNode.remove()" title="移除">${icon('x', 14)}</button>

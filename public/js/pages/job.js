@@ -69,6 +69,8 @@
               <dt>发布账号</dt><dd>${esc(j.accountName)}</dd>
               ${owner ? `<dt>所属用户</dt><dd>${esc(owner)}</dd>` : ''}
               ${j.title ? `<dt>标题</dt><dd>${esc(j.title)}</dd>` : ''}
+              ${j.topic && j.topic.name ? `<dt>话题</dt><dd><a href="https://m.bilibili.com/topic-detail?topic_id=${j.topic.id}&topic_name=${encodeURIComponent(j.topic.name)}" target="_blank" rel="noopener" style="color:var(--brand)">#${esc(j.topic.name)}#</a></dd>` : ''}
+              ${(j.mentions || []).length ? `<dt>提及</dt><dd>${j.mentions.map((m) => `<a href="https://space.bilibili.com/${esc(m.uid)}" target="_blank" rel="noopener" style="color:var(--brand)">@${esc(m.name)}</a>`).join('、')}</dd>` : ''}
               <dt>任务ID</dt><dd class="hint" style="font-family:Consolas,monospace;font-size:12px">${esc(j.id)}</dd>
               <dt>${j.status === 'published' ? '发布时间' : '计划时间'}</dt>
               <dd>${esc(fmtTime(j.status === 'published' ? j.publishedAt : j.scheduledAt))}</dd>
@@ -102,6 +104,11 @@
         </div>
         <div class="fld" style="margin-bottom:12px"><label>动态内容</label><textarea id="e-text" rows="8">${esc(j.text)}</textarea></div>
         <div class="fld" style="margin-bottom:12px">
+          <label>@提及（可选，搜索选择后作为可点击链接插入正文末尾；正文中的 @昵称 也会生效）</label>
+          <div class="sel-topic" id="e-mention-pills"></div>
+          <div class="topic-wrap"><input id="e-mention-input" placeholder="输入昵称搜索用户，点击添加" autocomplete="off"><div class="topic-dd" id="e-mention-dd" style="display:none"></div></div>
+        </div>
+        <div class="fld" style="margin-bottom:12px">
           <label>图片（点击选中 / 取消，上限 9 张）</label>
           <div class="img-grid slim" id="e-img-grid" style="max-height:210px"></div>
         </div>
@@ -121,6 +128,45 @@
       </div>`;
     state.modalImages = (j.images || []).slice();
     state.editTopic = j.topic || null;
+    state.editMentions = (j.mentions || []).slice();
+    const renderMentionPills = () => {
+      $('#e-mention-pills').innerHTML = state.editMentions.map((m, i) =>
+        `<span class="pill dark">@${esc(m.name)}<button class="icon-btn" data-rmmention="${i}" style="width:16px;height:16px;color:#fff">${icon('x', 11)}</button></span>`).join('');
+      $$('#e-mention-pills [data-rmmention]').forEach((b) => b.addEventListener('click', () => {
+        state.editMentions.splice(Number(b.dataset.rmmention), 1);
+        renderMentionPills();
+      }));
+    };
+    renderMentionPills();
+    const mInput = $('#e-mention-input'), mDd = $('#e-mention-dd');
+    const mHide = () => { mDd.style.display = 'none'; };
+    const mSearch = App.debounce(async () => {
+      const kw = mInput.value.trim().replace(/^@/, '');
+      if (!kw) { mHide(); return; }
+      mDd.style.display = '';
+      mDd.innerHTML = '<div class="ti hint-ti">搜索中…</div>';
+      try {
+        const accountId = $('#e-account').value;
+        const r = await api('GET', '/api/mentions/search?keywords=' + encodeURIComponent(kw) + (accountId ? '&accountId=' + encodeURIComponent(accountId) : ''));
+        const users = r.users || [];
+        mDd.innerHTML = users.length
+          ? users.map((u) => `<div class="ti" data-uid="${esc(u.uid)}" data-name="${esc(u.name)}"><span>@${esc(u.name)}</span><span class="st">${u.fans ? Number(u.fans).toLocaleString() + ' 粉丝' : ''}</span></div>`).join('')
+          : '<div class="ti hint-ti">未找到用户</div>';
+      } catch (e) {
+        mDd.innerHTML = `<div class="ti hint-ti">${esc(e.message)}</div>`;
+      }
+      $$('.ti', mDd).forEach((el) => el.addEventListener('mousedown', () => {
+        if (!el.dataset.uid) return;
+        if (!state.editMentions.some((m) => m.uid === el.dataset.uid)) {
+          state.editMentions.push({ uid: el.dataset.uid, name: el.dataset.name });
+          renderMentionPills();
+        }
+        mInput.value = '';
+        mHide();
+      }));
+    }, 350);
+    mInput.addEventListener('input', mSearch);
+    mInput.addEventListener('blur', () => setTimeout(mHide, 200));
     const keys = () => state.modalImages.map((i) => i.key);
     const pubMap = publishedImageMap(state.jobs);
     const paint = () => {
@@ -207,6 +253,7 @@
           accountId: $('#e-account').value,
           images: state.modalImages,
           topic: state.editTopicEditor ? state.editTopicEditor.collect() : null,
+          mentions: state.editMentions,
           scheduledAt: when.toISOString()
         });
         toast('已保存并重新排队', 'success');

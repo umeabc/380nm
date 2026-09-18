@@ -599,6 +599,22 @@ module.exports = function createRoutes(ctx) {
     res.json({ topics: req.user.recentTopics || [] });
   });
 
+  // ===================== @人搜索 =====================
+  router.get('/mentions/search', requireAuth, async (req, res, next) => {
+    try {
+      const keywords = String(req.query.keywords || '').replace(/^@/, '').trim();
+      if (!keywords) return res.status(400).json({ error: '请输入用户关键词' });
+      let acc = req.query.accountId ? store.getAccount(req.query.accountId) : null;
+      if (acc && acc.userId !== req.user.id && req.user.role !== 'admin') acc = null;
+      if (!acc) acc = store.listAccounts().find((a) => a.userId === req.user.id);
+      if (!acc) return res.status(400).json({ error: '请先在「账号管理」添加B站账号，再搜索用户' });
+      const users = await bili.searchMention({ sessdata: acc.sessdata, keywords });
+      res.json({ users });
+    } catch (e) {
+      next(e);
+    }
+  });
+
   // 解析任务话题：优先使用已有 id，否则按名称搜索（精确匹配优先）
   async function resolveTopic(user, account, rawTopic) {
     const name = String((rawTopic && rawTopic.name) || '').trim().replace(/^#|#$/g, '');
@@ -622,6 +638,25 @@ module.exports = function createRoutes(ctx) {
     list.unshift({ id: topic.id, name: topic.name });
     u.recentTopics = list.slice(0, 8);
     store.save();
+  }
+
+  // 解析任务中的 @提及：uid 缺失时按名称搜索（精确匹配优先）
+  async function resolveMentions(user, account, rawMentions) {
+    if (!Array.isArray(rawMentions)) return [];
+    const out = [];
+    for (const m of rawMentions.slice(0, 10)) {
+      const name = String((m && m.name) || '').replace(/^@/, '').trim();
+      if (!name) continue;
+      let uid = String((m && m.uid) || '').trim();
+      if (!uid || !/^\d+$/.test(uid)) {
+        const found = await bili.searchMention({ sessdata: account.sessdata, keywords: name });
+        const hit = found.find((x) => x.name === name) || found[0];
+        if (!hit) throw Object.assign(new Error(`未找到用户「${name}」，请在搜索结果中选择`), { status: 400 });
+        uid = hit.uid;
+      }
+      if (!out.some((x) => x.uid === uid)) out.push({ uid, name });
+    }
+    return out;
   }
 
   // ===================== 发布队列（按用户隔离） =====================
@@ -668,6 +703,13 @@ module.exports = function createRoutes(ctx) {
       let title = String((req.body && req.body.title) || '').trim();
       if (title.length > 20) return res.status(400).json({ error: '动态标题最多 20 个字' });
 
+      let mentions = [];
+      try {
+        mentions = await resolveMentions(req.user, account, req.body.mentions);
+      } catch (e) {
+        return res.status(e.status || 500).json({ error: e.message });
+      }
+
       const job = {
         id: genId('job'),
         userId: req.user.id,
@@ -679,6 +721,7 @@ module.exports = function createRoutes(ctx) {
         images: images.map((i) => ({ key: i.key, name: i.name || '', url: i.url || '' })),
         topic,
         title,
+        mentions,
         scheduledAt: when.toISOString(),
         status: 'pending',
         attempts: 0,
@@ -746,6 +789,16 @@ module.exports = function createRoutes(ctx) {
         const t = String(req.body.title || '').trim();
         if (t.length > 20) return res.status(400).json({ error: '动态标题最多 20 个字' });
         patch.title = t;
+      }
+      if (req.body.mentions !== undefined) {
+        const accId = patch.accountId || job.accountId;
+        const acc = store.getAccount(accId);
+        if (!acc) return res.status(400).json({ error: 'B站账号不存在' });
+        try {
+          patch.mentions = await resolveMentions({ id: job.userId }, acc, req.body.mentions);
+        } catch (e) {
+          return res.status(e.status || 500).json({ error: e.message });
+        }
       }
       patch.status = 'pending';
       patch.lastError = null;
