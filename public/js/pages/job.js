@@ -104,7 +104,7 @@
         </div>
         <div class="fld" style="margin-bottom:12px"><label>动态内容</label><textarea id="e-text" rows="8">${esc(j.text)}</textarea></div>
         <div class="fld" style="margin-bottom:12px">
-          <label>@提及（可选，搜索选择后作为可点击链接插入正文末尾；正文中的 @昵称 也会生效）</label>
+          <label>@提及（可选，选择用户后插入正文光标处；未插入正文的提及将追加到动态末尾）</label>
           <div class="sel-topic" id="e-mention-pills"></div>
           <div class="topic-wrap"><input id="e-mention-input" placeholder="输入昵称搜索用户，点击添加" autocomplete="off"><div class="topic-dd" id="e-mention-dd" style="display:none"></div></div>
         </div>
@@ -139,6 +139,11 @@
     };
     renderMentionPills();
     const mInput = $('#e-mention-input'), mDd = $('#e-mention-dd');
+    const ta = $('#e-text');
+    const trackSel = () => { ta._sel = ta.selectionStart; ta._selEnd = ta.selectionEnd; };
+    ta.addEventListener('keyup', trackSel);
+    ta.addEventListener('click', trackSel);
+    ta.addEventListener('input', trackSel);
     const mHide = () => { mDd.style.display = 'none'; };
     const mSearch = App.debounce(async () => {
       const kw = mInput.value.trim().replace(/^@/, '');
@@ -157,6 +162,12 @@
       }
       $$('.ti', mDd).forEach((el) => el.addEventListener('mousedown', () => {
         if (!el.dataset.uid) return;
+        // 插入正文光标处
+        const pos = ta._sel != null ? ta._sel : ta.value.length;
+        const end = ta._selEnd != null ? ta._selEnd : pos;
+        const mention = '@' + el.dataset.name + ' ';
+        ta.value = ta.value.slice(0, pos) + mention + ta.value.slice(end);
+        ta.dispatchEvent(new Event('input'));
         if (!state.editMentions.some((m) => m.uid === el.dataset.uid)) {
           state.editMentions.push({ uid: el.dataset.uid, name: el.dataset.name });
           renderMentionPills();
