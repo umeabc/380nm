@@ -25,7 +25,7 @@
           <div class="un">${esc(u.name || u.username)} ${u.username !== (u.name || u.username) ? `<span class="hint">@${esc(u.username)}</span>` : ''} ${isSelf ? '<span class="pill blue">当前登录</span>' : ''}</div>
           <div class="us">创建于 ${fmtTime(u.createdAt)} · 任务 ${u.jobsCount || 0} · 图片 ${u.imagesCount || 0} · 最近登录 ${u.lastLoginAt ? fmtTime(u.lastLoginAt) : '从未'}</div>
         </div>
-        ${rolePill}${activePill}
+        <div class="urow-badges">${rolePill}${activePill}</div>
         <div class="ops">${ops}</div>
       </div>`;
     }).join('') || '<div class="empty">暂无用户</div>';
