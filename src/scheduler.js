@@ -81,7 +81,8 @@ class Scheduler {
         uid: account.uid,
         text: job.text,
         pictures,
-        topic: job.topic || null
+        topic: job.topic || null,
+        title: job.title || ''
       });
       await this.store.updateJob(job.id, {
         status: 'published',
