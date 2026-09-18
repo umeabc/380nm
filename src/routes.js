@@ -420,6 +420,10 @@ module.exports = function createRoutes(ctx) {
     }
   });
 
+  router.get('/topics/recent', requireAuth, (req, res) => {
+    res.json({ topics: req.user.recentTopics || [] });
+  });
+
   // 解析任务话题：优先使用已有 id，否则按名称搜索（精确匹配优先）
   async function resolveTopic(user, account, rawTopic) {
     const name = String((rawTopic && rawTopic.name) || '').trim().replace(/^#|#$/g, '');
@@ -432,6 +436,17 @@ module.exports = function createRoutes(ctx) {
       id = hit.id;
     }
     return { id, name };
+  }
+
+  // 记录用户最近使用的话题（去重，最多 8 个）
+  function pushRecentTopic(userId, topic) {
+    if (!topic || !topic.id || !topic.name) return;
+    const u = store.getUser(userId);
+    if (!u) return;
+    const list = (u.recentTopics || []).filter((t) => t.id !== topic.id);
+    list.unshift({ id: topic.id, name: topic.name });
+    u.recentTopics = list.slice(0, 8);
+    store.save();
   }
 
   // ===================== 发布队列（按用户隔离） =====================
@@ -475,6 +490,9 @@ module.exports = function createRoutes(ctx) {
         return res.status(e.status || 500).json({ error: e.message });
       }
 
+      let title = String((req.body && req.body.title) || '').trim();
+      if (title.length > 20) return res.status(400).json({ error: '动态标题最多 20 个字' });
+
       const job = {
         id: genId('job'),
         userId: req.user.id,
@@ -485,6 +503,7 @@ module.exports = function createRoutes(ctx) {
         text,
         images: images.map((i) => ({ key: i.key, name: i.name || '', url: i.url || '' })),
         topic,
+        title,
         scheduledAt: when.toISOString(),
         status: 'pending',
         attempts: 0,
@@ -496,6 +515,7 @@ module.exports = function createRoutes(ctx) {
         updatedAt: new Date().toISOString()
       };
       await store.addJob(job);
+      if (topic) pushRecentTopic(req.user.id, topic);
       await store.addLog(
         'info',
         `任务加入队列: ${template.name} -> ${job.accountName}，计划 ${when.toLocaleString('zh-CN')}`,
@@ -545,6 +565,12 @@ module.exports = function createRoutes(ctx) {
         } catch (e) {
           return res.status(e.status || 500).json({ error: e.message });
         }
+        if (patch.topic) pushRecentTopic(job.userId, patch.topic);
+      }
+      if (req.body.title !== undefined) {
+        const t = String(req.body.title || '').trim();
+        if (t.length > 20) return res.status(400).json({ error: '动态标题最多 20 个字' });
+        patch.title = t;
       }
       patch.status = 'pending';
       patch.lastError = null;

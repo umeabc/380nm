@@ -76,8 +76,8 @@ class BilibiliClient {
     }));
   }
 
-  /** 发布动态（带图 / 纯文字 / 可绑定话题） */
-  async createDynamic({ sessdata, csrf, text, pictures = [], topic = null }) {
+  /** 发布动态（带图 / 纯文字 / 可绑定话题 / 可带标题） */
+  async createDynamic({ sessdata, csrf, text, pictures = [], topic = null, title = '' }) {
     let finalText = String(text);
     const body = {
       dyn_req: {
@@ -91,6 +91,8 @@ class BilibiliClient {
         pics: pictures
       }
     };
+    const t = String(title || '').trim();
+    if (t) body.dyn_req.content.title = t;
     if (topic && topic.id && topic.name) {
       if (!finalText.includes(`#${topic.name}#`)) {
         finalText = `${finalText} #${topic.name}# `;
