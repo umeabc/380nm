@@ -108,6 +108,9 @@
     renderImageGrid();
     updatePreview();
   }
+  async function loadImages() {
+    state.images = (await api('GET', '/api/images')).images;
+  }
   async function uploadFiles(files) {
     if (!files || !files.length) return;
     const fd = new FormData();
