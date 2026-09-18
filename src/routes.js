@@ -347,6 +347,75 @@ module.exports = function createRoutes(ctx) {
     }
   });
 
+  // ===================== 图库文件夹 =====================
+  router.get('/folders', requireAuth, (req, res) => {
+    res.json({ folders: store.listFolders().filter(scopeFilter(req)) });
+  });
+
+  router.post('/folders', requireAuth, async (req, res, next) => {
+    try {
+      const name = String((req.body && req.body.name) || '').trim();
+      if (!name || name.length > 20) return res.status(400).json({ error: '文件夹名称需 1-20 个字' });
+      const dup = store.listFolders().find((f) => f.userId === req.user.id && f.name === name);
+      if (dup) return res.status(400).json({ error: '同名文件夹已存在' });
+      const folder = { id: genId('fld'), userId: req.user.id, name, createdAt: new Date().toISOString() };
+      await store.addFolder(folder);
+      res.json({ folder });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.put('/folders/:id', requireAuth, async (req, res, next) => {
+    try {
+      const f = store.getFolder(req.params.id);
+      if (!f || !canTouch(f, req)) return res.status(404).json({ error: '文件夹不存在' });
+      const name = String((req.body && req.body.name) || '').trim();
+      if (!name || name.length > 20) return res.status(400).json({ error: '文件夹名称需 1-20 个字' });
+      const dup = store.listFolders().find((x) => x.userId === f.userId && x.name === name && x.id !== f.id);
+      if (dup) return res.status(400).json({ error: '同名文件夹已存在' });
+      await store.updateFolder(f.id, { name });
+      res.json({ folder: store.getFolder(f.id) });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.delete('/folders/:id', requireAuth, async (req, res, next) => {
+    try {
+      const f = store.getFolder(req.params.id);
+      if (!f || !canTouch(f, req)) return res.status(404).json({ error: '文件夹不存在' });
+      await store.deleteFolder(f.id);
+      await store.addLog('info', `删除文件夹「${f.name}」，其中图片已移至未分类`, { userId: req.user.id });
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.post('/images/move', requireAuth, async (req, res, next) => {
+    try {
+      const { keys, folderId } = req.body || {};
+      if (!Array.isArray(keys) || !keys.length) return res.status(400).json({ error: '未选择图片' });
+      let folder = null;
+      if (folderId && folderId !== 'none') {
+        folder = store.getFolder(folderId);
+        if (!folder || !canTouch(folder, req)) return res.status(400).json({ error: '目标文件夹不存在' });
+      }
+      let moved = 0;
+      for (const k of keys) {
+        const img = store.listImages().find((i) => i.key === k);
+        if (!img || !canTouch(img, req)) continue;
+        img.folderId = folder ? folder.id : null;
+        moved++;
+      }
+      store.save();
+      res.json({ ok: true, moved });
+    } catch (e) {
+      next(e);
+    }
+  });
+
   // ===================== 图片上传 / 图库（按用户隔离） =====================
   router.get('/images', requireAuth, (req, res) => {
     res.json({ images: store.listImages().filter(scopeFilter(req)) });
@@ -357,6 +426,16 @@ module.exports = function createRoutes(ctx) {
       if (err) return res.status(400).json({ error: err.message });
       try {
         const files = req.files || [];
+        // 上传时可指定目标文件夹（须属于当前用户）
+        let folderId = null;
+        const fid = String((req.body && req.body.folderId) || '');
+        if (fid && fid !== 'none') {
+          const folder = store.getFolder(fid);
+          if (!folder || folder.userId !== req.user.id) {
+            return res.status(400).json({ error: '目标文件夹不存在' });
+          }
+          folderId = folder.id;
+        }
         const saved = [];
         for (const f of files) {
           if (!f.mimetype || !f.mimetype.startsWith('image/')) continue;
@@ -365,6 +444,7 @@ module.exports = function createRoutes(ctx) {
           const meta = {
             key,
             userId: req.user.id,
+            folderId,
             name: f.originalname || key,
             url,
             size: f.size,

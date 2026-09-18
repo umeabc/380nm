@@ -17,7 +17,7 @@ class Store {
   constructor(file) {
     this.file = file;
     this.data = {
-      users: [], sessions: {},
+      users: [], sessions: {}, folders: [],
       accounts: [], templates: [], jobs: [], logs: [], images: []
     };
     this._saveTimer = null;
@@ -33,6 +33,7 @@ class Store {
     }
     if (!Array.isArray(this.data.users)) this.data.users = [];
     if (!this.data.sessions || typeof this.data.sessions !== 'object') this.data.sessions = {};
+    if (!Array.isArray(this.data.folders)) this.data.folders = [];
     if (!Array.isArray(this.data.accounts)) this.data.accounts = [];
     if (!Array.isArray(this.data.templates)) this.data.templates = [];
     if (!Array.isArray(this.data.jobs)) this.data.jobs = [];
@@ -200,6 +201,34 @@ class Store {
     for (const token of Object.keys(this.data.sessions)) {
       if (this.data.sessions[token].userId === userId) delete this.data.sessions[token];
     }
+    this.save();
+  }
+
+  // ---------------- 图库文件夹 ----------------
+  listFolders() {
+    return this.data.folders;
+  }
+  getFolder(id) {
+    return this.data.folders.find((f) => f.id === id);
+  }
+  async addFolder(folder) {
+    this.data.folders.push(folder);
+    this.save();
+    return folder;
+  }
+  async updateFolder(id, patch) {
+    const f = this.getFolder(id);
+    if (!f) return null;
+    Object.assign(f, patch);
+    this.save();
+    return f;
+  }
+  /** 删除文件夹，其中的图片回到“未分类” */
+  async deleteFolder(id) {
+    this.data.folders = this.data.folders.filter((f) => f.id !== id);
+    this.data.images.forEach((i) => {
+      if (i.folderId === id) i.folderId = null;
+    });
     this.save();
   }
 
