@@ -21,12 +21,18 @@
     $('#img-max').textContent = tpl.maxImages || 0;
     box.innerHTML = (tpl.variables || []).map((v) => {
       const ph = v.placeholder ? `placeholder="${esc(v.placeholder)}"` : '';
+      if (v.type === 'at') {
+        return `<div class="fld" style="margin-bottom:10px"><label>${esc(v.label || v.key)}（@用户）</label>
+          <div class="topic-wrap"><input data-key="${esc(v.key)}" data-mention="" data-uid="" placeholder="输入昵称搜索用户，点击结果选择（发布后显示为可点击链接）" autocomplete="off">
+          <div class="topic-dd" style="display:none"></div></div></div>`;
+      }
       if (v.type === 'textarea') {
         return `<div class="fld" style="margin-bottom:10px"><label>${esc(v.label || v.key)}</label><textarea rows="4" data-key="${esc(v.key)}" ${ph}></textarea></div>`;
       }
       return `<div class="fld" style="margin-bottom:10px"><label>${esc(v.label || v.key)}</label><input data-key="${esc(v.key)}" ${ph}></div>`;
     }).join('') || '<div class="empty">该模板没有变量，可直接使用</div>';
     $$('#var-fields [data-key]').forEach((el) => el.addEventListener('input', updatePreview));
+    $$('#var-fields input[data-mention]').forEach((el) => bindAtInput(el));
     const max = tpl.maxImages || 0;
     if (state.selected.length > max) {
       state.selected = state.selected.slice(0, max);
@@ -38,8 +44,52 @@
   }
   function collectVariables() {
     const vars = {};
-    $$('#var-fields [data-key]').forEach((el) => { vars[el.dataset.key] = el.value; });
+    $$('#var-fields [data-key]').forEach((el) => {
+      let v = el.value;
+      if (el.dataset.mention !== undefined && v && !v.startsWith('@')) v = '@' + v.trim();
+      vars[el.dataset.key] = v;
+    });
     return vars;
+  }
+  function collectMentions() {
+    const list = [];
+    $$('#var-fields input[data-mention]').forEach((el) => {
+      const name = (el.dataset.mention || el.value || '').replace(/^@/, '').trim();
+      if (name) list.push({ name, uid: el.dataset.uid || '' });
+    });
+    return list;
+  }
+  function bindAtInput(input) {
+    const dd = input.parentNode.querySelector('.topic-dd');
+    const hide = () => { dd.style.display = 'none'; };
+    const search = debounce(async () => {
+      const kw = input.value.trim().replace(/^@/, '');
+      if (!kw) { hide(); return; }
+      dd.style.display = '';
+      dd.innerHTML = '<div class="ti hint-ti">搜索中…</div>';
+      try {
+        const accountId = $('#sel-account').value;
+        const r = await api('GET', '/api/mentions/search?keywords=' + encodeURIComponent(kw)
+          + (accountId ? '&accountId=' + encodeURIComponent(accountId) : ''));
+        const users = r.users || [];
+        dd.innerHTML = users.length
+          ? users.map((u) => `<div class="ti" data-uid="${esc(u.uid)}" data-name="${esc(u.name)}">
+               <span>@${esc(u.name)}</span><span class="st">${u.fans ? Number(u.fans).toLocaleString() + ' 粉丝' : ''}</span></div>`).join('')
+          : '<div class="ti hint-ti">未找到用户，可直接提交（发布时按名称解析）</div>';
+      } catch (e) {
+        dd.innerHTML = `<div class="ti hint-ti">${esc(e.message)}</div>`;
+      }
+      $$('.ti', dd).forEach((el) => el.addEventListener('mousedown', () => {
+        if (!el.dataset.uid) return;
+        input.value = '@' + el.dataset.name;
+        input.dataset.mention = el.dataset.name;
+        input.dataset.uid = el.dataset.uid;
+        hide();
+        updatePreview();
+      }));
+    }, 350);
+    input.addEventListener('input', search);
+    input.addEventListener('blur', () => setTimeout(hide, 200));
   }
   function updatePreview() {
     const tpl = currentTemplate();
@@ -234,11 +284,15 @@
         images: state.selected,
         topic: topicEditor ? topicEditor.collect() : null,
         title: $('#dyn-title').value.trim(),
+        mentions: collectMentions(),
         scheduledAt: when.toISOString()
       });
       toast('已加入发布队列', 'success');
       state.selected = [];
-      $$('#var-fields [data-key]').forEach((el) => { el.value = ''; });
+      $$('#var-fields [data-key]').forEach((el) => {
+        el.value = '';
+        if (el.dataset.mention !== undefined) { el.dataset.mention = ''; el.dataset.uid = ''; }
+      });
       $('#time-input').value = '';
       $('#dyn-title').value = '';
       $('#title-count').textContent = '0';

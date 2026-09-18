@@ -14,6 +14,39 @@ async function fetchJson(url, options = {}, timeoutMs = 20000) {
   return json;
 }
 
+/** 把纯文本 + @提及列表 组装为动态内容节点序列：
+ *  普通文本 → {raw_text, type:1, biz_id:''}；@用户 → {raw_text:'@昵称 ', type:2, biz_id:'<uid>'}
+ *  未在文本中出现的提及会追加到末尾 */
+function buildContents(text, mentions = []) {
+  const nodes = [];
+  const hits = [];
+  for (const m of mentions || []) {
+    if (!m || !m.name || !m.uid) continue;
+    const idx = text.indexOf('@' + m.name);
+    if (idx >= 0) hits.push({ idx, len: m.name.length + 1, m });
+  }
+  hits.sort((a, b) => a.idx - b.idx);
+  let pos = 0;
+  const pushText = (seg) => {
+    if (seg) nodes.push({ raw_text: seg, type: 1, biz_id: '' });
+  };
+  for (const it of hits) {
+    if (it.idx < pos) continue;
+    pushText(text.slice(pos, it.idx));
+    nodes.push({ raw_text: '@' + it.m.name + ' ', type: 2, biz_id: String(it.m.uid) });
+    pos = it.idx + it.len;
+  }
+  pushText(text.slice(pos));
+  for (const m of mentions || []) {
+    // 文本中未出现的提及（如编辑时被删掉）追加到末尾，避免丢失
+    if (m && m.name && m.uid && !nodes.some((n) => n.type === 2 && n.biz_id === String(m.uid))) {
+      nodes.push({ raw_text: '@' + m.name + ' ', type: 2, biz_id: String(m.uid) });
+    }
+  }
+  if (!nodes.length) nodes.push({ raw_text: text, type: 1, biz_id: '' });
+  return nodes;
+}
+
 /**
  * B站动态发布客户端（2025 现行接口，均经真实账号验证）
  * - 图片上传: POST https://api.bilibili.com/x/dynamic/feed/draw/upload_bfs  (multipart)
@@ -76,8 +109,27 @@ class BilibiliClient {
     }));
   }
 
-  /** 发布动态（带图 / 纯文字 / 可绑定话题 / 可带标题） */
-  async createDynamic({ sessdata, csrf, text, pictures = [], topic = null, title = '' }) {
+  /** @人搜索（动态 @ 提及的用户联想） */
+  async searchMention({ sessdata, keywords }) {
+    const json = await fetchJson(
+      'https://api.bilibili.com/x/polymer/web-dynamic/v1/mention/search?keyword=' + encodeURIComponent(String(keywords)),
+      { headers: { ...DEFAULT_HEADERS, cookie: `SESSDATA=${sessdata}` } },
+      15000
+    );
+    if (json.code !== 0) {
+      throw new Error(`@人搜索失败 (code ${json.code}): ${json.message || ''}`);
+    }
+    const items = [];
+    for (const g of ((json.data && json.data.groups) || [])) {
+      for (const it of (g.items || [])) {
+        if (it.uid && it.name) items.push({ uid: String(it.uid), name: it.name, face: it.face || '', fans: it.fans || 0 });
+      }
+    }
+    return items;
+  }
+
+  /** 发布动态（带图 / 纯文字 / 可绑定话题 / 可带标题 / 可 @用户） */
+  async createDynamic({ sessdata, csrf, text, pictures = [], topic = null, title = '', mentions = [] }) {
     let finalText = String(text);
     const body = {
       dyn_req: {
@@ -97,7 +149,6 @@ class BilibiliClient {
       if (!finalText.includes(`#${topic.name}#`)) {
         finalText = `${finalText} #${topic.name}# `;
       }
-      body.dyn_req.content.contents = [{ raw_text: finalText, type: 1, biz_id: '' }];
       body.dyn_req.topic = {
         id: Number(topic.id),
         name: topic.name,
@@ -105,6 +156,8 @@ class BilibiliClient {
         from_topic_id: 0
       };
     }
+    // @用户：把 text 按 "@昵称" 出现位置切分为 普通文本(type1)/用户提及(type2,biz_id=uid) 节点序列
+    body.dyn_req.content.contents = buildContents(finalText, mentions);
     const json = await fetchJson(
       'https://api.bilibili.com/x/dynamic/feed/create/dyn?platform=web&csrf=' + encodeURIComponent(csrf),
       {
