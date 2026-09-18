@@ -99,7 +99,7 @@ R2_PUBLIC_BASE=https://pub-xxxx.r2.dev   # 用于前端预览
 ## 目录结构
 
 ```
-├── server.js              入口
+├── server.js              入口（API + 页面路由）
 ├── src/
 │   ├── config.js          配置（端口、存储、调度参数）
 │   ├── auth.js            密码哈希（scrypt）+ 会话 + 权限中间件
@@ -113,7 +113,21 @@ R2_PUBLIC_BASE=https://pub-xxxx.r2.dev   # 用于前端预览
 │       ├── index.js       存储工厂（local / r2）
 │       ├── local.js       本地存储
 │       └── r2.js          Cloudflare R2 存储（S3 兼容）
-├── public/index.html      管理界面（登录 + 多页 SPA）
+├── public/                多页面前端（Comiku 风格 UI，移动端自适应）
+│   ├── css/app.css        全局样式
+│   ├── js/common.js       共享外壳（侧边栏/顶栏）、鉴权守卫、工具函数
+│   ├── js/pages/*.js      各页面逻辑
+│   ├── login.html         /login        登录
+│   ├── dashboard.html     /dashboard    总览（统计 + 7日计划 + 最近发布）
+│   ├── release.html       /release      发布动态
+│   ├── queue.html         /queue        发布队列
+│   ├── job.html           /queue/:id    任务详情（含编辑）
+│   ├── library.html       /library      图片库（文件夹归类）
+│   ├── templates.html     /templates    模板列表
+│   ├── template-edit.html /templates/:id 模板编辑
+│   ├── accounts.html      /accounts     B站账号管理
+│   ├── users.html         /users        用户管理（管理员）
+│   └── log.html           /log          运行日志
 ├── scripts/reset.js       清空本地数据
 └── data/                  运行时生成（db.json + uploads/）
 ```

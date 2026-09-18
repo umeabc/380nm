@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>图片库 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page" id="page">
+    <div class="split">
+      <div class="card">
+        <div class="card-h">文件夹</div>
+        <div id="folder-list"></div>
+        <button class="btn" id="btn-folder-new" style="width:100%;justify-content:center;margin-top:8px">新建文件夹</button>
+      </div>
+      <div class="card" style="min-width:0">
+        <div class="card-h">图片库<span class="hint-r">
+          <span class="hint" id="lib-stats"></span>
+          <label class="scope-toggle" id="scope-lib-wrap" style="display:none"><input type="checkbox" id="scope-lib"> 查看全部用户</label>
+          <span>悬停图标移动 / 删除</span>
+        </span></div>
+        <div class="drop" id="lib-drop">点击选择或拖拽图片上传（上传到当前所选文件夹）</div>
+        <input type="file" id="lib-file" accept="image/*" multiple style="display:none">
+        <div class="img-grid" id="lib-grid" style="margin-top:14px"></div>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="toast-wrap"></div>
+<div id="move-menu" class="move-menu" style="display:none"></div>
+<script src="/js/common.js"></script>
+<script src="/js/pages/library.js"></script>
+</body>
+</html>

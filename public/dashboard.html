@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>总览 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page" id="page">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon" data-ic="clock"></div>
+        <div class="stat-number"><span id="st-pending">0</span><span class="cnt" id="st-next" data-ts=""></span></div>
+        <div class="stat-note">待发布 · <a href="/queue">进入队列 →</a></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" data-ic="check"></div>
+        <div class="stat-number"><span id="st-published">0</span></div>
+        <div class="stat-note">已发布 · <button id="st-last">查看最近 →</button></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" data-ic="alert"></div>
+        <div class="stat-number"><span id="st-failed">0</span></div>
+        <div class="stat-note">失败 · <a href="/log">查看日志 →</a></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" data-ic="trend"></div>
+        <div class="stat-number"><span id="st-rate">--</span></div>
+        <div class="stat-note">发布成功率</div>
+      </div>
+    </div>
+    <div class="ov-grid">
+      <div class="card chart-card">
+        <div class="card-h">未来 7 天发布计划</div>
+        <div class="bars" id="ov-bars"></div>
+      </div>
+      <div class="card ring-card">
+        <div class="ring" id="ov-ring"><div class="rv" id="ov-ring-v">--</div></div>
+        <div class="hint">成功 / （成功 + 失败）</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-h">最近发布<span class="hint-r"><a class="btn sm" href="/queue">全部队列 →</a></span></div>
+      <div id="dash-recent"></div>
+    </div>
+  </main>
+</div>
+<div id="toast-wrap"></div>
+<script src="/js/common.js"></script>
+<script src="/js/pages/dashboard.js"></script>
+</body>
+</html>

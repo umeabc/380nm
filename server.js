@@ -19,6 +19,22 @@ async function main() {
   if (storage.name === 'local') {
     app.use('/uploads', express.static(storage.dir, { maxAge: '7d' }));
   }
+
+  // 页面路由（多页应用）
+  const page = (name) => (req, res) => res.sendFile(path.join(__dirname, 'public', name + '.html'));
+  app.get('/', (req, res) => res.redirect('/dashboard'));
+  app.get('/login', page('login'));
+  app.get('/dashboard', page('dashboard'));
+  app.get('/release', page('release'));
+  app.get('/queue', page('queue'));
+  app.get('/queue/:id', page('job'));
+  app.get('/library', page('library'));
+  app.get('/templates', page('templates'));
+  app.get('/templates/:id', page('template-edit'));
+  app.get('/accounts', page('accounts'));
+  app.get('/users', page('users'));
+  app.get('/log', page('log'));
+
   app.use(express.static(path.join(__dirname, 'public')));
 
   const scheduler = new Scheduler({ store, storage, bili, config: config.scheduler });

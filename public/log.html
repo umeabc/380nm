@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>运行日志 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page" id="page">
+    <div class="card">
+      <div class="card-h">运行日志<span class="hint-r">
+        <label class="scope-toggle" id="scope-logs-wrap" style="display:none"><input type="checkbox" id="scope-logs"> 查看全部用户</label>
+        <span>每 5 秒自动刷新</span>
+      </span></div>
+      <div id="log-list"></div>
+    </div>
+  </main>
+</div>
+<div id="toast-wrap"></div>
+<script src="/js/common.js"></script>
+<script src="/js/pages/log.js"></script>
+</body>
+</html>
