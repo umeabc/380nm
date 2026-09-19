@@ -12,8 +12,19 @@
 <div class="main-shell">
   <header class="topbar" id="topbar"></header>
   <main class="page" id="page">
-    <div class="filters" id="q-filters"></div>
-    <div id="q-list"></div>
+    <section class="metrics" id="metrics"></section>
+    <div class="tabs" id="tabs"></div>
+    <div class="filterbar" id="filterbar"></div>
+    <div class="toolbar">
+      <span class="fb-label">分组方式 <span class="new-badge">新增</span></span>
+      <div class="seg" id="groupSeg">
+        <button data-g="target" class="on">按发布目标</button>
+        <button data-g="tag">按标签</button>
+        <button data-g="none">不分组</button>
+      </div>
+      <div class="tb-right" id="resultInfo"></div>
+    </div>
+    <div id="list"></div>
   </main>
 </div>
 <div id="toast-wrap"></div>

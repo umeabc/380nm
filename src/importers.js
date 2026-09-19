@@ -105,10 +105,54 @@ function h2Get(url, { headers = {}, timeout = 60000 } = {}) {
 }
 
 class ImportError extends Error {
-  constructor(message) {
+  constructor(message, code) {
     super(message);
     this.name = 'ImportError';
+    this.code = code || 'network'; // invalid / notfound / restricted / timeout / network
   }
+}
+
+/** 解析图片尺寸（PNG/JPEG/GIF/WebP），失败返回 null */
+function imageDims(buffer, contentType) {
+  try {
+    const ct = String(contentType || '').toLowerCase();
+    if (ct.includes('png') && buffer.length > 24) {
+      return { w: buffer.readUInt32BE(16), h: buffer.readUInt32BE(20) };
+    }
+    if (ct.includes('gif') && buffer.length > 10) {
+      return { w: buffer.readUInt16LE(6), h: buffer.readUInt16LE(8) };
+    }
+    if ((ct.includes('jpeg') || ct.includes('jpg')) && buffer.length > 4 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+      let p = 2;
+      while (p + 9 < buffer.length) {
+        if (buffer[p] !== 0xff) { p++; continue; }
+        const marker = buffer[p + 1];
+        const len = buffer.readUInt16BE(p + 2);
+        if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) ||
+            (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf)) {
+          return { h: buffer.readUInt16BE(p + 5), w: buffer.readUInt16BE(p + 7) };
+        }
+        p += 2 + len;
+      }
+    }
+    if (ct.includes('webp') && buffer.length > 30) {
+      if (buffer.toString('ascii', 12, 16) === 'VP8X') {
+        return { w: buffer.readUIntLE(24, 3) + 1, h: buffer.readUIntLE(27, 3) + 1 };
+      }
+      if (buffer.toString('ascii', 12, 16) === 'VP8 ' && buffer[23] === 0x9d && buffer[24] === 0x01 && buffer[25] === 0x2a) {
+        return { w: buffer.readUInt16LE(26) & 0x3fff, h: buffer.readUInt16LE(28) & 0x3fff };
+      }
+    }
+  } catch (e) { /* 解析失败返回 null */ }
+  return null;
+}
+
+function fmtOfCt(ct) {
+  const m = {
+    'image/jpeg': 'JPEG', 'image/jpg': 'JPEG', 'image/png': 'PNG',
+    'image/gif': 'GIF', 'image/webp': 'WEBP', 'image/bmp': 'BMP', 'image/avif': 'AVIF'
+  };
+  return m[String(ct || '').split(';')[0].trim().toLowerCase()] || 'IMG';
 }
 
 function makeFetch(proxy) {
@@ -330,3 +374,176 @@ async function importFromUrl(url, settings = {}) {
 }
 
 module.exports = { importFromUrl, ImportError };
+
+/* =====================================================================
+ * 作品解析（PRD F-D1~F-D3）：解析 X / Pixiv 作品页，返回作品元数据 + 原图
+ * parseWork(url, settings, onProgress) → { work, images }
+ * onProgress(stepIndex, subText) 驱动四步进度：识别平台/请求作品页/抓取原图/提取作者信息
+ * ===================================================================== */
+
+const PARSE_X_RE = /^(?:https?:\/\/)?(?:www\.)?(?:x\.com|twitter\.com)\/([A-Za-z0-9_]{1,15})\/status\/(\d+)/i;
+const PARSE_PIXIV_RE = /^(?:https?:\/\/)?(?:www\.)?pixiv\.net\/(?:en\/)?artworks\/(\d+)/i;
+
+async function parseWork(url, settings = {}, onProgress = () => {}) {
+  const u = String(url || '').trim();
+  const mX = PARSE_X_RE.exec(u);
+  const mP = PARSE_PIXIV_RE.exec(u) || PIXIV_ARTWORK_RE.exec(u);
+  let platform, workId, handle = '';
+  if (mX) { platform = 'x'; workId = mX[2]; handle = mX[1]; }
+  else if (mP) { platform = 'pixiv'; workId = mP[1]; }
+  else {
+    throw new ImportError('无法识别的链接：仅支持 X(Twitter) 与 Pixiv 的作品页链接', 'invalid');
+  }
+  onProgress(0, '识别到 ' + (platform === 'x' ? 'X · @' + handle : 'Pixiv · 作品ID ' + workId));
+
+  const opts = {
+    session: settings.pixivSession || '',
+    authToken: settings.twitterAuth || '',
+    ct0: settings.twitterCt0 || '',
+    proxy: settings.importProxy || '',
+    timeout: 8000
+  };
+
+  if (platform === 'pixiv') {
+    return parsePixivWork(u, workId, opts, onProgress);
+  }
+  return parseXWork(u, workId, opts, onProgress);
+}
+
+async function parsePixivWork(url, workId, opts, onProgress) {
+  const { session, proxy, timeout } = opts;
+  const f = makeFetch(proxy);
+  const headers = { 'user-agent': UA, referer: 'https://www.pixiv.net/', accept: 'application/json' };
+  if (session.trim()) headers.cookie = 'PHPSESSID=' + session.trim();
+  let res;
+  try {
+    res = await f(`https://www.pixiv.net/ajax/illust/${workId}`, { headers, signal: AbortSignal.timeout(timeout) });
+  } catch (e) {
+    throw new ImportError('连接 Pixiv 失败（网络错误：' + ((e.cause && e.cause.message) || e.message) + '）', 'timeout');
+  }
+  if (res.status === 404) throw new ImportError('链接失效或不存在的作品（作品可能已删除，或作品 ID 有误）', 'notfound');
+  if (!res.ok) throw new ImportError(`获取 Pixiv 作品信息失败（HTTP ${res.status}）`, 'network');
+  const data = await res.json();
+  if (data.error || !data.body) {
+    throw new ImportError('需要登录或为限制级作品，无法直接抓取（请在全站设置配置 Pixiv PHPSESSID，或手动保存图片后上传）', 'restricted');
+  }
+  const body = data.body;
+  onProgress(1, '作品页已打开');
+
+  let urls = [];
+  const first = (body.urls || {}).original;
+  if (first) urls.push(first);
+  const pageCount = Number(body.pageCount) || 1;
+  if (pageCount > 1) {
+    try {
+      const pr = await f(`https://www.pixiv.net/ajax/illust/${workId}/pages`, { headers, signal: AbortSignal.timeout(timeout) });
+      if (pr.ok) {
+        const pd = await pr.json();
+        if (!pd.error && Array.isArray(pd.body)) {
+          const pages = pd.body.map((p) => p.urls && p.urls.original).filter(Boolean);
+          if (pages.length) urls = pages;
+        }
+      }
+    } catch (e) { /* 退回单页 */ }
+  }
+  if (!urls.length) throw new ImportError('该作品未找到原图', 'notfound');
+
+  const title = body.illustTitle || '';
+  const images = [];
+  for (let i = 0; i < urls.length; i++) {
+    const dl = await downloadImage(urls[i], { proxy, headers: { referer: 'https://www.pixiv.net/' }, timeout: 60000 });
+    const dims = imageDims(dl.buffer, dl.contentType);
+    images.push({
+      buffer: dl.buffer,
+      contentType: dl.contentType,
+      name: `Pixiv-${workId}-${cleanName(title) || 'untitled'}-P${i + 1}${extFromCt(dl.contentType)}`,
+      w: dims ? dims.w : 0, h: dims ? dims.h : 0, fmt: fmtOfCt(dl.contentType)
+    });
+    if (i === 0) {
+      onProgress(2, (dims ? `${dims.w} × ${dims.h}` : '原图') + ' · ' + fmtOfCt(dl.contentType) + (urls.length > 1 ? ` · 共 ${urls.length} 张` : ''));
+    }
+  }
+  onProgress(3, '作者：' + (body.userName || '未知'));
+
+  return {
+    work: {
+      platform: 'pixiv',
+      workId,
+      title,
+      author: body.userName || '',
+      pixivId: String(body.userId || ''),
+      url
+    },
+    images
+  };
+}
+
+async function parseXWork(url, workId, opts, onProgress) {
+  const { authToken, ct0, proxy, timeout } = opts;
+  const f = makeFetch(proxy);
+  let data = null;
+  try {
+    const r = await f(`https://cdn.syndication.twimg.com/tweet-result?id=${workId}&lang=en&token=x`, {
+      headers: { 'user-agent': UA, referer: 'https://x.com/', accept: 'application/json' },
+      signal: AbortSignal.timeout(timeout)
+    });
+    if (r.status === 404) throw new ImportError('链接失效或不存在的推文（可能已删除，或推文 ID 有误）', 'notfound');
+    if (r.ok) data = await r.json();
+  } catch (e) {
+    if (e instanceof ImportError) throw e;
+    throw new ImportError('连接 X 失败（网络错误：' + ((e.cause && e.cause.message) || e.message) + '）', 'timeout');
+  }
+  if (!data) throw new ImportError('获取推文信息失败（HTTP 异常，可能受限）', 'network');
+
+  const text = data.text || '';
+  const createdAt = data.created_at || '';
+  const user = data.user || {};
+  const handle = user.screen_name || '';
+  const author = user.name || handle || '';
+  const mediaUrls = [];
+  for (const md of data.mediaDetails || []) if (md.media_url_https) mediaUrls.push(md.media_url_https);
+  if (!mediaUrls.length) {
+    for (const md of ((data.extended_entities || {}).media || [])) if (md.media_url_https) mediaUrls.push(md.media_url_https);
+  }
+  onProgress(1, '作品页已打开');
+  if (!mediaUrls.length) {
+    throw new ImportError('该推文中未找到图片（纯文字推文，或受限内容需在全站设置配置 auth_token/ct0）', 'restricted');
+  }
+
+  const title = (text || '').replace(/\s+/g, ' ').trim().slice(0, 30) || 'X 推文';
+  const images = [];
+  for (let i = 0; i < mediaUrls.length; i++) {
+    let u = mediaUrls[i];
+    if (/pbs\.twimg\.com\/media\//.test(u) && !/[?&]name=/.test(u)) u += (u.includes('?') ? '&' : '?') + 'name=orig';
+    const headers = { referer: 'https://x.com/' };
+    if (authToken && ct0) headers.cookie = `auth_token=${authToken}; ct0=${ct0}`;
+    const dl = await downloadImage(u, { proxy, headers, timeout: 60000 });
+    const dims = imageDims(dl.buffer, dl.contentType);
+    const ts = parseTweetTime(createdAt) || workId;
+    images.push({
+      buffer: dl.buffer,
+      contentType: dl.contentType,
+      name: `X-${cleanName(text) || 'tweet'}-${ts}-P${i + 1}${extFromCt(dl.contentType)}`,
+      w: dims ? dims.w : 0, h: dims ? dims.h : 0, fmt: fmtOfCt(dl.contentType)
+    });
+    if (i === 0) {
+      onProgress(2, (dims ? `${dims.w} × ${dims.h}` : '原图') + ' · ' + fmtOfCt(dl.contentType) + (images.length > 1 ? ` · 共 ${images.length} 张` : ''));
+    }
+  }
+  onProgress(3, '作者：' + author);
+
+  return {
+    work: {
+      platform: 'x',
+      workId,
+      title,
+      author,
+      handle,
+      url
+    },
+    images
+  };
+}
+
+module.exports.parseWork = parseWork;
+module.exports.imageDims = imageDims;

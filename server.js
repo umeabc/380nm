@@ -31,6 +31,7 @@ async function main() {
   app.get('/library', page('library'));
   app.get('/templates', page('templates'));
   app.get('/templates/:id', page('template-edit'));
+  app.get('/libaccounts', page('libaccounts'));
   app.get('/accounts', page('accounts'));
   app.get('/users', page('users'));
   app.get('/settings', page('settings'));

@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const { genId, sanitizeUser } = require('./store');
 const { renderTemplate } = require('./render');
+const { PRESET_TAGS, TASK_TYPES, TYPE_SLOTS, SLOT_LABELS, slotSegment } = require('./templates');
 const {
   hashPassword, verifyPassword, attachUser, requireAuth, requireAdmin
 } = require('./auth');
@@ -11,7 +12,7 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024, files: 9 }
 });
 
-const { importFromUrl, ImportError } = require('./importers');
+const { importFromUrl, parseWork, ImportError } = require('./importers');
 
 const MAX_IMAGES = 9;
 const MAX_IMPORT_IMAGES = 30;
@@ -459,6 +460,67 @@ module.exports = function createRoutes(ctx) {
     }
   });
 
+  // ===================== 作品解析（流式进度，PRD F-D1~F-D3） =====================
+  const PARSE_ERRORS = {
+    invalid: { t: '无法识别的链接', s: '仅支持 X(Twitter) 与 Pixiv 的作品页链接。示例：x.com/用户名/status/ID、pixiv.net/artworks/ID' },
+    notfound: { t: '链接失效或不存在的作品', s: '该作品可能已被删除，或链接中的作品 ID 有误' },
+    restricted: { t: '需要登录或为限制级作品', s: '该作品需要登录或为 R-18 内容，无法直接抓取。请手动保存图片后通过「上传图片」添加' },
+    timeout: { t: '网络超时', s: '请求超过 8 秒未响应，请重试' },
+    network: { t: '网络错误', s: '请求失败，请检查网络或代理设置后重试' }
+  };
+
+  router.post('/library/parse-work', requireAuth, async (req, res) => {
+    const url = String((req.body && req.body.url) || '').trim();
+    if (!url) return res.status(400).json({ error: '请输入链接' });
+    let folderId = null;
+    const fid = String((req.body && req.body.folderId) || '');
+    if (fid && fid !== 'none') {
+      const folder = store.getFolder(fid);
+      if (!folder || folder.userId !== req.user.id) {
+        return res.status(400).json({ error: '目标文件夹不存在' });
+      }
+      folderId = folder.id;
+    }
+
+    // NDJSON 流式输出：progress 事件 + done/error 事件
+    res.setHeader('content-type', 'application/x-ndjson; charset=utf-8');
+    res.setHeader('cache-control', 'no-cache');
+    res.setHeader('x-accel-buffering', 'no');
+    const send = (obj) => { try { res.write(JSON.stringify(obj) + '\n'); } catch (e) { /* ignore */ } };
+    const flush = () => { try { res.flush && res.flush(); } catch (e) { /* ignore */ } };
+
+    let done = 0;
+    const onProgress = (stepIndex, subText) => {
+      done = stepIndex + 1;
+      send({ type: 'progress', step: stepIndex, done, sub: subText || '' });
+      flush();
+    };
+
+    try {
+      const { work, images } = await parseWork(url, store.getSettings(), onProgress);
+      const capped = images.slice(0, MAX_IMPORT_IMAGES);
+      const saved = [];
+      for (const it of capped) {
+        if (!it.buffer || !it.buffer.length) continue;
+        const { key, url: imgUrl } = await storage.put(it.buffer, it.name, it.contentType);
+        const meta = {
+          key, userId: req.user.id, folderId,
+          name: it.name || key, url: imgUrl, size: it.buffer.length,
+          contentType: it.contentType, createdAt: new Date().toISOString()
+        };
+        await store.addImage(meta);
+        saved.push(meta);
+      }
+      await store.addLog('info', `链接解析：${work.title} → ${saved.length} 张原图入库（${url.slice(0, 80)}）`, { userId: req.user.id });
+      send({ type: 'done', step: 4, work, images: saved, total: images.length });
+      res.end();
+    } catch (e) {
+      const code = (e && e.code && PARSE_ERRORS[e.code]) ? e.code : 'network';
+      send({ type: 'error', step: Math.min(done, 3), error: code, message: PARSE_ERRORS[code].t });
+      res.end();
+    }
+  });
+
   // ===================== 链接导入图库 =====================
   router.post('/library/import', requireAuth, async (req, res, next) => {
     try {
@@ -579,6 +641,70 @@ module.exports = function createRoutes(ctx) {
     }
   });
 
+  // ===================== 预设标签 / 内容类型 =====================
+  router.get('/tags', requireAuth, (req, res) => {
+    res.json({ tags: PRESET_TAGS, types: TASK_TYPES, typeSlots: TYPE_SLOTS, slotLabels: SLOT_LABELS });
+  });
+
+  // ===================== 账号库（署名成员目录） =====================
+  const validateLibAccount = (body) => {
+    const name = String((body && body.name) || '').trim();
+    const handle = String((body && body.handle) || '').trim().replace(/^@/, '');
+    const role = String((body && body.role) || '').trim();
+    const uid = String((body && body.uid) || '').trim();
+    if (!name || name.length > 30) return { error: '账号名需 1-30 个字' };
+    if (!handle || handle.length > 30) return { error: 'handle 需 1-30 个字符（不含 @）' };
+    if (!['翻译', '嵌字', '原作者'].includes(role)) return { error: '角色需为 翻译 / 嵌字 / 原作者' };
+    if (uid && !/^\d+$/.test(uid)) return { error: 'B站 uid 需为纯数字' };
+    return { acc: { name, handle, role, uid } };
+  };
+
+  router.get('/lib-accounts', requireAuth, (req, res) => {
+    res.json({ accounts: store.listLibAccounts().filter(scopeFilter(req)) });
+  });
+
+  router.post('/lib-accounts', requireAuth, async (req, res, next) => {
+    try {
+      const { error, acc } = validateLibAccount(req.body);
+      if (error) return res.status(400).json({ error });
+      const dup = store.listLibAccounts().find((a) => a.userId === req.user.id && a.handle === acc.handle);
+      if (dup) return res.status(400).json({ error: '相同 handle 的账号已存在' });
+      const created = { id: genId('lib'), userId: req.user.id, ...acc, createdAt: new Date().toISOString() };
+      await store.addLibAccount(created);
+      res.json({ account: created });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.put('/lib-accounts/:id', requireAuth, async (req, res, next) => {
+    try {
+      const target = store.getLibAccount(req.params.id);
+      if (!target || !canTouch(target, req)) return res.status(404).json({ error: '账号不存在' });
+      const { error, acc } = validateLibAccount(req.body);
+      if (error) return res.status(400).json({ error });
+      const dup = store.listLibAccounts().find((a) => a.userId === target.userId && a.handle === acc.handle && a.id !== target.id);
+      if (dup) return res.status(400).json({ error: '相同 handle 的账号已存在' });
+      const updated = await store.updateLibAccount(target.id, acc);
+      res.json({ account: updated });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  router.delete('/lib-accounts/:id', requireAuth, async (req, res, next) => {
+    try {
+      const target = store.getLibAccount(req.params.id);
+      if (!target || !canTouch(target, req)) return res.status(404).json({ error: '账号不存在' });
+      await store.deleteLibAccount(target.id);
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // ===================== 预设标签 / 内容类型（已挂载于 /tags） =====================
+
   // ===================== 话题搜索 =====================
   router.get('/topics/search', requireAuth, async (req, res, next) => {
     try {
@@ -614,6 +740,50 @@ module.exports = function createRoutes(ctx) {
       next(e);
     }
   });
+
+  // 标签校验（PRD F-Q1：预设集合，0~3 个）
+  function validateTags(raw) {
+    if (raw === undefined || raw === null) return { list: [] };
+    if (!Array.isArray(raw)) return { error: '标签格式不正确' };
+    const list = [];
+    for (const t of raw) {
+      const v = String(t || '').trim();
+      if (!v) continue;
+      if (!PRESET_TAGS.includes(v)) return { error: `标签「${v}」不在预设集合中` };
+      if (!list.includes(v)) list.push(v);
+    }
+    if (list.length > 3) return { error: '最多绑定 3 个标签' };
+    return { list };
+  }
+
+  // 署名槽位解析（PRD F-Q5/Q6）：按内容类型校验必需槽位，并从账号库快照 {id,name,handle,uid}
+  function resolveSlots(body, type, userId) {
+    const need = TYPE_SLOTS[type] || [];
+    const raw = (body && body.slots) || {};
+    const pick = (k) => {
+      const v = raw[k];
+      return v && typeof v === 'object' ? v.id : v;
+    };
+    const slots = {};
+    for (const k of need) {
+      const id = pick(k);
+      if (!id) return { error: `请先绑定 ${SLOT_LABELS[k] || k}，未绑定的 @ 无法发布` };
+      const entry = store.getLibAccount(String(id));
+      if (!entry || entry.userId !== userId) return { error: `${SLOT_LABELS[k] || k} 对应的账号不存在` };
+      slots[k] = { id: entry.id, name: entry.name, handle: entry.handle, uid: entry.uid || '' };
+    }
+    // 切换类型时保留仍有效、但新类型不必需的已绑定槽位（PRD F-Q5 规则1）
+    for (const k of ['trans', 'typo', 'orig']) {
+      if (slots[k] || need.includes(k)) continue;
+      const id = pick(k);
+      if (!id) continue;
+      const entry = store.getLibAccount(String(id));
+      if (entry && entry.userId === userId) {
+        slots[k] = { id: entry.id, name: entry.name, handle: entry.handle, uid: entry.uid || '' };
+      }
+    }
+    return { slots };
+  }
 
   // 解析任务话题：优先使用已有 id，否则按名称搜索（精确匹配优先）
   async function resolveTopic(user, account, rawTopic) {
@@ -710,6 +880,13 @@ module.exports = function createRoutes(ctx) {
         return res.status(e.status || 500).json({ error: e.message });
       }
 
+      // 标签 / 内容类型 / 署名槽位（PRD F-Q1/Q5/Q6）
+      const tags = validateTags(req.body.tags);
+      if (tags.error) return res.status(400).json({ error: tags.error });
+      const type = TASK_TYPES.includes(req.body.type) ? req.body.type : '原创';
+      const slotsR = resolveSlots(req.body, type, req.user.id);
+      if (slotsR.error) return res.status(400).json({ error: slotsR.error });
+
       const job = {
         id: genId('job'),
         userId: req.user.id,
@@ -722,6 +899,9 @@ module.exports = function createRoutes(ctx) {
         topic,
         title,
         mentions,
+        tags: tags.list,
+        type,
+        slots: slotsR.slots,
         scheduledAt: when.toISOString(),
         status: 'pending',
         attempts: 0,
@@ -799,6 +979,19 @@ module.exports = function createRoutes(ctx) {
         } catch (e) {
           return res.status(e.status || 500).json({ error: e.message });
         }
+      }
+      if (req.body.tags !== undefined) {
+        const t = validateTags(req.body.tags);
+        if (t.error) return res.status(400).json({ error: t.error });
+        patch.tags = t.list;
+      }
+      if (req.body.type !== undefined || req.body.slots !== undefined) {
+        const newType = req.body.type !== undefined ? req.body.type : (job.type || '原创');
+        if (!TASK_TYPES.includes(newType)) return res.status(400).json({ error: '内容类型不正确' });
+        const s = resolveSlots(req.body, newType, job.userId);
+        if (s.error) return res.status(400).json({ error: s.error });
+        patch.type = newType;
+        patch.slots = s.slots;
       }
       patch.status = 'pending';
       patch.lastError = null;

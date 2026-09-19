@@ -1,3 +1,5 @@
+const { slotSegment } = require('./templates');
+
 class Scheduler {
   constructor({ store, storage, bili, config }) {
     this.store = store;
@@ -7,7 +9,6 @@ class Scheduler {
     this._timer = null;
     this._busy = false;
   }
-
   start() {
     this.recover().catch((e) => console.error('[scheduler] 恢复任务失败:', e));
     if (this._timer) return;
@@ -63,6 +64,19 @@ class Scheduler {
     const tag = `[${job.id}] ${job.templateName} -> ${account ? account.uname || account.name : job.accountName || '未知账号'}`;
     try {
       if (!account) throw new Error('绑定的账号已不存在，请编辑任务重新选择账号');
+      // 署名片段（PRD F-Q5）：按内容类型追加【翻&嵌 @xx @xx 原作X@xx】等
+      const seg = slotSegment(job.type || '原创', job.slots || {});
+      const publishText = seg ? `${job.text}\n\n${seg}` : job.text;
+      // @提及 = 手动提及 + 槽位中带 B站 uid 的账号（渲染为可点击用户链接）
+      const mentions = [...(job.mentions || [])];
+      for (const k of Object.keys(job.slots || {})) {
+        const s = job.slots[k];
+        if (s && s.handle && s.uid) {
+          if (!mentions.some((m) => String(m.uid) === String(s.uid))) {
+            mentions.push({ name: s.handle, uid: s.uid });
+          }
+        }
+      }
       const pictures = [];
       for (const img of job.images || []) {
         const { buffer, contentType } = await this.storage.get(img.key);
@@ -79,11 +93,11 @@ class Scheduler {
         sessdata: account.sessdata,
         csrf: account.bili_jct,
         uid: account.uid,
-        text: job.text,
+        text: publishText,
         pictures,
         topic: job.topic || null,
         title: job.title || '',
-        mentions: job.mentions || []
+        mentions
       });
       await this.store.updateJob(job.id, {
         status: 'published',

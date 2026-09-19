@@ -12,76 +12,144 @@
 <div class="main-shell">
   <header class="topbar" id="topbar"></header>
   <main class="page" id="page">
-    <div id="no-account-warn" class="warn" style="display:none">还没有可用的B站账号，请先到「账号管理」添加 SESSDATA 和 bili_jct。</div>
+    <div id="no-account-warn" class="warn banner-amber" style="display:none">还没有可用的B站账号，请先到「账号管理」添加 SESSDATA 和 bili_jct。</div>
+
     <div class="grid2">
-      <div class="stack">
-        <div class="card">
-          <div class="card-h">账号与模板</div>
-          <div class="frow">
-            <div class="fld"><label>发布账号</label><select id="sel-account"></select></div>
-            <div class="fld"><label>动态模板</label><select id="sel-template"></select></div>
+      <!-- ============ 左列 ============ -->
+      <div class="col">
+        <section class="group">
+          <div class="card-head"><span class="g-title">账号与模板</span></div>
+          <div class="card-body">
+            <div class="f-row">
+              <div class="field"><label>发布账号</label><select class="ctl" id="sel-account"></select></div>
+              <div class="field"><label>动态模板</label><select class="ctl" id="sel-template"></select></div>
+            </div>
+            <div class="foot-hint" id="tplHint"></div>
           </div>
-        </div>
-        <div class="card">
-          <div class="card-h">动态标题<span class="hint-r">可选 · <span id="title-count">0</span>/20 字</span></div>
-          <input id="dyn-title" maxlength="20" placeholder="给这条动态起个标题（图文动态显示在图片上方）">
-        </div>
-        <div class="card">
-          <div class="card-h">模板变量<span class="hint-r">使用 <span class="kbd">{{占位符}}</span> 自动填充</span></div>
-          <div id="var-fields"></div>
-        </div>
-        <div class="card">
-          <div class="card-h">发布时间</div>
-          <div class="frow">
-            <div class="fld" style="max-width:250px"><label>计划时间</label><input type="datetime-local" id="time-input" step="60"></div>
+        </section>
+
+        <section class="group">
+          <div class="card-head">
+            <span class="g-title">动态标题</span>
+            <span class="hint-r"><span>可选</span><span class="ctr" id="titleCounter">0 / 20 字</span></span>
           </div>
-          <div class="presets" id="presets" style="margin-top:12px">
-            <button type="button" data-preset="today20">今天 20:00</button>
-            <button type="button" data-preset="tomorrow8">明天 08:00</button>
-            <button type="button" data-preset="tomorrow20">明天 20:00</button>
-            <button type="button" data-preset="1h">1小时后</button>
-            <button type="button" data-preset="now">立即发布</button>
+          <div class="card-body">
+            <input class="ctl" id="dyn-title" maxlength="20" placeholder="给这条动态起个标题（图文动态显示在图片上方）">
           </div>
-          <div class="hint" style="margin-top:10px">到点自动发布；所选时间已过则保存后立即发布。</div>
-        </div>
+        </section>
+
+        <section class="group">
+          <div class="card-head">
+            <span class="g-title">模板变量</span>
+            <span class="hint-r">使用 <b style="color:var(--primary)">{{占位符}}</b> 自动填充</span>
+          </div>
+          <div class="card-body" id="var-fields"></div>
+        </section>
       </div>
-      <div class="stack">
-        <div class="card">
-          <div class="card-h">配图<span class="hint-r"><button class="btn sm" id="pick-upload-btn" type="button">上传图片</button><span class="hint">最多 <b id="img-max">9</b> 张，按选择顺序发布</span></span></div>
-          <input type="file" id="file-input" accept="image/*" multiple style="display:none">
-          <div class="sel-strip" id="sel-strip"></div>
-          <div class="pick-body">
-            <div class="pick-folders" id="pick-folders"></div>
-            <div class="pick-right">
-              <div class="img-grid" id="img-grid"></div>
-              <div class="pick-pager" id="pick-pager"></div>
+
+      <!-- ============ 右列 ============ -->
+      <div class="col">
+        <section class="group">
+          <div class="card-head">
+            <span class="g-title">链接抓取</span>
+            <span class="new-badge">新增</span>
+            <span class="hint-r">粘贴链接自动抓图与署名</span>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <label>作品链接 <span style="color:var(--text-3)">· 支持 X(Twitter) / Pixiv 作品页</span></label>
+              <div class="ctl-row">
+                <input class="ctl" id="link-input" placeholder="https://x.com/.../status/... 或 https://www.pixiv.net/artworks/..." autocomplete="off">
+                <button class="btn primary sm" id="btn-parse" type="button">解析链接</button>
+              </div>
+            </div>
+            <div id="fetchState"></div>
+            <div class="field">
+              <label>作者说明 <span style="color:var(--text-3)">· 自动填充 · 可编辑</span></label>
+              <div class="ctl-row">
+                <input class="ctl" id="creditInput" placeholder="解析链接后自动填入，或手动输入">
+                <button class="btn sm" id="btn-insert-credit" type="button">插入正文</button>
+              </div>
             </div>
           </div>
-          <div class="hint" style="margin-top:8px">左侧切换文件夹浏览；上传的图片存入当前所选文件夹（“全部图片 / 未分类”时存入未分类）。</div>
-        </div>
-        <div class="card">
-          <div class="card-h">话题<span class="hint-r">可选 · 绑定B站话题并追加 #话题名# 到正文</span></div>
-          <div class="recent-topics" id="recent-topics" style="display:none"></div>
-          <div class="topic-wrap">
-            <input id="topic-input" placeholder="输入关键词搜索话题（如：日常），点击结果选择" autocomplete="off">
-            <div class="topic-dd" id="topic-dd" style="display:none"></div>
+        </section>
+
+        <section class="group">
+          <div class="card-head">
+            <span class="g-title">配图</span>
+            <span class="hint-r" id="imgHint"></span>
+            <button class="btn sm" id="pick-upload-btn" type="button" style="margin-left:10px">上传图片</button>
+            <input type="file" id="file-input" accept="image/*" multiple style="display:none">
           </div>
-          <div class="sel-topic" id="topic-selected" style="display:none"></div>
-        </div>
-        <div class="card">
-          <div class="card-h">@提及<span class="hint-r">选择用户后立即插入最近编辑的变量光标处；未编辑变量时追加到动态末尾</span></div>
-          <div class="sel-topic" id="at-pills"></div>
-          <div class="topic-wrap">
-            <input id="at-input" placeholder="输入昵称搜索用户，点击添加（一键插入）" autocomplete="off">
-            <div class="topic-dd" id="at-dd" style="display:none"></div>
+          <div class="card-body">
+            <div class="sel-strip" id="sel-strip"></div>
+            <div class="img-layout">
+              <div id="pick-folders"></div>
+              <div class="pick-right">
+                <div class="img-grid" id="img-grid"></div>
+                <div class="pick-pager" id="pick-pager"></div>
+              </div>
+            </div>
+            <div class="foot-hint">左侧切换文件夹浏览；上传的图片存入当前所选文件夹（全部图片 / 未分类 时存入未分类）。</div>
           </div>
-        </div>
-        <div class="card">
-          <div class="card-h">预览与提交</div>
-          <div class="preview" id="preview-text"></div>
-          <div class="hint" style="margin:8px 0 14px"><span id="preview-count"></span></div>
-          <button class="btn primary" id="btn-submit">加入发布队列</button>
-        </div>
+        </section>
+
+        <section class="group">
+          <div class="card-head">
+            <span class="g-title">话题</span>
+            <span class="hint-r">可选 · 绑定B站话题并追加 #话题名# 到正文</span>
+          </div>
+          <div class="card-body">
+            <div class="recent-topics" id="recent-topics" style="display:none"></div>
+            <input class="ctl" id="topic-input" placeholder="输入关键词搜索话题（如：日常），点击结果选择" autocomplete="off">
+            <div class="chips" id="topic-chips"></div>
+            <div id="topicHits"></div>
+          </div>
+        </section>
+
+        <section class="group">
+          <div class="card-head">
+            <span class="g-title">@提及</span>
+            <span class="hint-r">选择用户后立即插入最近编辑的变量光标处；未编辑变量时追加到动态末尾</span>
+          </div>
+          <div class="card-body">
+            <input class="ctl" id="at-input" placeholder="输入昵称搜索用户，点击添加（一键插入）" autocomplete="off">
+            <div class="chips" id="at-chips"></div>
+            <div id="at-hits"></div>
+          </div>
+        </section>
+
+        <section class="group">
+          <div class="card-head"><span class="g-title">预览与提交</span></div>
+          <div class="card-body">
+            <div class="f-row">
+              <div class="field">
+                <label>计划时间</label>
+                <input class="ctl" type="datetime-local" id="time-input" step="60">
+              </div>
+              <div class="field">
+                <label>快捷时间</label>
+                <div class="presets" id="presets" style="display:flex;gap:6px;flex-wrap:wrap">
+                  <button class="chip" type="button" data-preset="today20">今天 20:00</button>
+                  <button class="chip" type="button" data-preset="tomorrow8">明天 08:00</button>
+                  <button class="chip" type="button" data-preset="tomorrow20">明天 20:00</button>
+                  <button class="chip" type="button" data-preset="1h">1小时后</button>
+                  <button class="chip" type="button" data-preset="now">立即发布</button>
+                </div>
+              </div>
+            </div>
+            <div class="field">
+              <label>合成预览</label>
+              <div class="preview" id="preview-text"></div>
+            </div>
+            <div class="sum" id="composeSummary"></div>
+          </div>
+          <div class="card-foot">
+            <span class="foot-hint">提交后进入「发布队列」等待调度</span>
+            <span class="spacer"></span>
+            <button class="btn primary" id="btn-submit">提交发布</button>
+          </div>
+        </section>
       </div>
     </div>
   </main>

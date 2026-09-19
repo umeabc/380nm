@@ -119,8 +119,9 @@ window.App = (function () {
     { route: 'dashboard', label: '总览', ic: 'home', group: '工作台', href: '/dashboard' },
     { route: 'release', label: '发布动态', ic: 'pencil', group: '工作台', href: '/release' },
     { route: 'queue', label: '发布队列', ic: 'layers', group: '工作台', href: '/queue', badge: true },
-    { route: 'library', label: '图片库', ic: 'image', group: '素材与配置', href: '/library' },
+    { route: 'library', label: '图库', ic: 'image', group: '素材与配置', href: '/library' },
     { route: 'templates', label: '模板管理', ic: 'layout', group: '素材与配置', href: '/templates' },
+    { route: 'libaccounts', label: '账号库', ic: 'users', group: '素材与配置', href: '/libaccounts' },
     { route: 'accounts', label: '账号管理', ic: 'user', group: '素材与配置', href: '/accounts' },
     { route: 'users', label: '用户管理', ic: 'users', group: '系统', href: '/users', admin: true },
     { route: 'settings', label: '全站设置', ic: 'gear', group: '系统', href: '/settings', admin: true },
@@ -137,37 +138,50 @@ window.App = (function () {
       g.items.push(n);
     }
     $('#sidebar').innerHTML =
-      `<div class="brand">380nm<small>B站动态定时发布后台</small></div>` +
+      `<div class="brand">
+         <div class="brand-title">380nm</div>
+         <div class="brand-sub">B站动态定时发布后台</div>
+       </div>
+       <nav class="nav">` +
       groups.map((g) =>
-        `<div class="nav-label">${esc(g.name)}</div>` +
+        `<div class="nav-group">${esc(g.name)}</div>` +
         g.items.map((n) =>
           `<a class="nav-item ${active === n.route ? 'active' : ''}" href="${n.href}" data-nav="${n.route}">
              ${icon(n.ic)}<span>${esc(n.label)}</span>` +
           (n.badge && state.pendingCount ? `<em>${state.pendingCount}</em>` : '') +
           `</a>`).join('')
       ).join('') +
-      `<div class="side-divider"></div>
+      `</nav>
        <div class="side-foot">
-         <div class="service-row">
+         <div class="sched">
            <span class="dot"></span>
-           <div><div class="t">调度运行中</div><div class="s">每 20 秒扫描队列</div></div>
+           <div>
+             <div class="sched-t">调度运行中</div>
+             <div class="sched-s">每 20 秒扫描队列</div>
+           </div>
          </div>
-         <div class="user-row">
-           <div class="profile-avatar">${esc((u.name || u.username || '?').slice(0, 1).toUpperCase())}</div>
-           <div class="uinfo"><div class="un" title="${esc(u.username)}">${esc(u.name || u.username)}</div><div class="ur">${u.role === 'admin' ? '管理员' : '用户'} · ${esc(u.username)}</div></div>
-           <button class="icon-btn" id="btn-pw" title="修改密码">${icon('key', 15)}</button>
-           <button class="icon-btn" id="btn-logout" title="退出登录">${icon('exit', 15)}</button>
+         <div class="user">
+           <div class="avatar">${esc((u.name || u.username || '?').slice(0, 1).toUpperCase())}</div>
+           <div>
+             <div class="u-name" title="${esc(u.username)}">${esc(u.name || u.username)}</div>
+             <div class="u-role">${u.role === 'admin' ? '管理员' : '普通用户'}</div>
+           </div>
+           <div class="u-meta">
+             <button id="btn-pw" title="修改密码">${icon('key', 14)}</button>
+             <button id="btn-logout" title="退出登录">${icon('exit', 14)}</button>
+           </div>
          </div>
-         <div class="side-version">380NM · CONSOLE</div>
        </div>`;
     $('#topbar').innerHTML =
-      `<button class="icon-btn hamburger" id="btn-menu" title="菜单">${icon('menu', 20)}</button>
-       <div class="page-title">${esc(title)}</div>
-       <div class="top-actions">
-         <span class="chip-ok"><span class="dot"></span><span>服务正常</span></span>
-         <span class="top-divider"></span>
-         <a class="btn primary sm" href="/release" id="top-new">${icon('plus', 14)} 新建发布任务</a>
+      `<button class="hamburger" id="btn-menu" aria-label="切换导航">${icon('menu', 17)}</button>
+       <h1 class="page-title">${esc(title)}</h1>
+       <div class="topbar-right">
+         <span class="badge-ok"><span class="d"></span>服务正常</span>
+         <a class="btn primary" href="/release">${icon('plus', 14)} 新建发布任务</a>
        </div>`;
+    if (!$('#overlay')) {
+      document.body.insertAdjacentHTML('beforeend', '<div class="overlay" id="overlay"></div>');
+    }
     bindShell();
   }
   function updateBadge() {
@@ -184,17 +198,23 @@ window.App = (function () {
     } catch (e) { /* ignore */ }
   }
   function closeDrawer() {
-    const sb = $('#sidebar'), bd = $('#nav-backdrop');
-    if (sb) sb.classList.remove('is-open');
-    if (bd) bd.classList.remove('show');
+    const sb = $('#sidebar');
+    if (sb) sb.classList.remove('open');
+    const bd = $('#overlay');
+    if (bd) bd.classList.remove('on');
   }
   function bindShell() {
     const menu = $('#btn-menu');
     if (menu) menu.addEventListener('click', () => {
-      $('#sidebar').classList.toggle('is-open');
-      $('#nav-backdrop').classList.toggle('show');
+      if (window.innerWidth <= 720) {
+        $('#sidebar').classList.toggle('open');
+        const ov = $('#overlay');
+        if (ov) ov.classList.toggle('on', $('#sidebar').classList.contains('open'));
+      } else {
+        document.body.classList.toggle('rail');
+      }
     });
-    const bd = $('#nav-backdrop');
+    const bd = $('#overlay');
     if (bd) bd.addEventListener('click', closeDrawer);
     $$('#sidebar .nav-item').forEach((a) => a.addEventListener('click', closeDrawer));
     const pw = $('#btn-pw');

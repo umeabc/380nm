@@ -18,7 +18,7 @@ class Store {
     this.file = file;
     this.data = {
       users: [], sessions: {}, folders: [], settings: {},
-      accounts: [], templates: [], jobs: [], logs: [], images: []
+      accounts: [], templates: [], jobs: [], logs: [], images: [], libAccounts: []
     };
     this._saveTimer = null;
   }
@@ -40,6 +40,7 @@ class Store {
     if (!Array.isArray(this.data.jobs)) this.data.jobs = [];
     if (!Array.isArray(this.data.logs)) this.data.logs = [];
     if (!Array.isArray(this.data.images)) this.data.images = [];
+    if (!Array.isArray(this.data.libAccounts)) this.data.libAccounts = [];
 
     this._migrate();
     await this._flush();
@@ -241,6 +242,30 @@ class Store {
     Object.assign(this.data.settings, patch);
     this.save();
     return this.data.settings;
+  }
+
+  // ---------------- 账号库（署名/@提及用的成员目录） ----------------
+  listLibAccounts() {
+    return this.data.libAccounts;
+  }
+  getLibAccount(id) {
+    return this.data.libAccounts.find((a) => a.id === id);
+  }
+  async addLibAccount(acc) {
+    this.data.libAccounts.push(acc);
+    this.save();
+    return acc;
+  }
+  async updateLibAccount(id, patch) {
+    const a = this.getLibAccount(id);
+    if (!a) return null;
+    Object.assign(a, patch);
+    this.save();
+    return a;
+  }
+  async deleteLibAccount(id) {
+    this.data.libAccounts = this.data.libAccounts.filter((a) => a.id !== id);
+    this.save();
   }
 
   // ---------------- accounts ----------------
