@@ -56,6 +56,19 @@ function DEFAULT_TEMPLATES() {
       ]
     },
     {
+      id: 'tpl_hanhua',
+      name: '汉化更新',
+      /* {{translator}} / {{typesetter}} 由「发布动态 · 模板变量」中的人员槽位自动填充，
+         候选来自「账号库」在岗成员（账号库已取消角色分类，翻译 / 嵌字 共用同一份清单） */
+      content: '【翻&嵌 {{translator}} {{typesetter}} 原作X{{origAuthor}}】\n\n{{title}}\n\n{{desc}}',
+      maxImages: 9,
+      variables: [
+        { key: 'origAuthor', label: '原作者', type: 'text', placeholder: '原作作者名或 @handle' },
+        { key: 'title', label: '作品标题', type: 'text', placeholder: '例：本周新刊短篇' },
+        { key: 'desc', label: '更新说明', type: 'textarea', placeholder: '一句话说明本期更新内容' }
+      ]
+    },
+    {
       id: 'tpl_daily',
       name: '日常',
       content: '{{content}}',

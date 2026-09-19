@@ -41,6 +41,11 @@ class Store {
     if (!Array.isArray(this.data.logs)) this.data.logs = [];
     if (!Array.isArray(this.data.images)) this.data.images = [];
     if (!Array.isArray(this.data.libAccounts)) this.data.libAccounts = [];
+    // 账号库已移除「角色」分类：老数据丢弃 role 字段，并补默认在岗状态
+    for (const a of this.data.libAccounts) {
+      if ('role' in a) delete a.role;
+      if (!a.status) a.status = '在岗';
+    }
 
     this._migrate();
     await this._flush();
@@ -259,6 +264,7 @@ class Store {
   async updateLibAccount(id, patch) {
     const a = this.getLibAccount(id);
     if (!a) return null;
+    delete a.role; // 角色分类已下线
     Object.assign(a, patch);
     this.save();
     return a;
