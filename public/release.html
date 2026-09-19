@@ -17,9 +17,12 @@
     <div class="grid2">
       <!-- ============ 左列 ============ -->
       <div class="col">
-        <section class="group">
-          <div class="card-head"><span class="g-title">账号与模板</span></div>
-          <div class="card-body">
+        <section class="group collapsible">
+          <div class="card-head collapse-toggle">
+            <span class="g-title">账号与模板</span>
+            <svg class="collapse-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="card-body collapse-content">
             <div class="f-row">
               <div class="field"><label>发布账号</label><select class="ctl" id="sel-account"></select></div>
               <div class="field"><label>动态模板</label><select class="ctl" id="sel-template"></select></div>
@@ -28,34 +31,64 @@
           </div>
         </section>
 
-        <section class="group">
-          <div class="card-head">
+        <section class="group collapsible">
+          <div class="card-head collapse-toggle">
             <span class="g-title">动态标题</span>
             <span class="hint-r"><span>可选</span><span class="ctr" id="titleCounter">0 / 20 字</span></span>
+            <svg class="collapse-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
-          <div class="card-body">
+          <div class="card-body collapse-content">
             <input class="ctl" id="dyn-title" maxlength="20" placeholder="给这条动态起个标题（图文动态显示在图片上方）">
           </div>
         </section>
 
-        <section class="group">
-          <div class="card-head">
+        <section class="group collapsible">
+          <div class="card-head collapse-toggle">
             <span class="g-title">模板变量</span>
             <span class="hint-r">使用 <b style="color:var(--primary)">{{占位符}}</b> 自动填充</span>
+            <svg class="collapse-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
-          <div class="card-body" id="var-fields"></div>
+          <div class="card-body collapse-content" id="var-fields"></div>
+        </section>
+
+        <section class="group collapsible">
+          <div class="card-head collapse-toggle">
+            <span class="g-title">话题</span>
+            <span class="hint-r">可选 · 绑定B站话题并追加 #话题名# 到正文</span>
+            <svg class="collapse-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="card-body collapse-content">
+            <div class="recent-topics" id="recent-topics" style="display:none"></div>
+            <input class="ctl" id="topic-input" placeholder="输入关键词搜索话题（如：日常），点击结果选择" autocomplete="off">
+            <div class="chips" id="topic-chips"></div>
+            <div id="topicHits"></div>
+          </div>
+        </section>
+
+        <section class="group collapsible">
+          <div class="card-head collapse-toggle">
+            <span class="g-title">@提及</span>
+            <span class="hint-r">选择用户后立即插入最近编辑的变量光标处；未编辑变量时追加到动态末尾</span>
+            <svg class="collapse-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </div>
+          <div class="card-body collapse-content">
+            <input class="ctl" id="at-input" placeholder="输入昵称搜索用户，点击添加（一键插入）" autocomplete="off">
+            <div class="chips" id="at-chips"></div>
+            <div id="at-hits"></div>
+          </div>
         </section>
       </div>
 
       <!-- ============ 右列 ============ -->
       <div class="col">
-        <section class="group">
-          <div class="card-head">
+        <section class="group collapsible">
+          <div class="card-head collapse-toggle">
             <span class="g-title">链接抓取</span>
             <span class="new-badge">新增</span>
             <span class="hint-r">粘贴链接自动抓图与署名</span>
+            <svg class="collapse-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
-          <div class="card-body">
+          <div class="card-body collapse-content">
             <div class="field">
               <label>作品链接 <span style="color:var(--text-3)">· 支持 X(Twitter) / Pixiv 作品页</span></label>
               <div class="ctl-row">
@@ -74,14 +107,15 @@
           </div>
         </section>
 
-        <section class="group">
-          <div class="card-head">
+        <section class="group collapsible">
+          <div class="card-head collapse-toggle">
             <span class="g-title">配图</span>
             <span class="hint-r" id="imgHint"></span>
             <button class="btn sm" id="pick-upload-btn" type="button" style="margin-left:10px">上传图片</button>
             <input type="file" id="file-input" accept="image/*" multiple style="display:none">
+            <svg class="collapse-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
-          <div class="card-body">
+          <div class="card-body collapse-content">
             <div class="sel-strip" id="sel-strip"></div>
             <div class="img-layout">
               <div id="pick-folders"></div>
@@ -94,34 +128,12 @@
           </div>
         </section>
 
-        <section class="group">
-          <div class="card-head">
-            <span class="g-title">话题</span>
-            <span class="hint-r">可选 · 绑定B站话题并追加 #话题名# 到正文</span>
+        <section class="group collapsible">
+          <div class="card-head collapse-toggle">
+            <span class="g-title">计划时间</span>
+            <svg class="collapse-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </div>
-          <div class="card-body">
-            <div class="recent-topics" id="recent-topics" style="display:none"></div>
-            <input class="ctl" id="topic-input" placeholder="输入关键词搜索话题（如：日常），点击结果选择" autocomplete="off">
-            <div class="chips" id="topic-chips"></div>
-            <div id="topicHits"></div>
-          </div>
-        </section>
-
-        <section class="group">
-          <div class="card-head">
-            <span class="g-title">@提及</span>
-            <span class="hint-r">选择用户后立即插入最近编辑的变量光标处；未编辑变量时追加到动态末尾</span>
-          </div>
-          <div class="card-body">
-            <input class="ctl" id="at-input" placeholder="输入昵称搜索用户，点击添加（一键插入）" autocomplete="off">
-            <div class="chips" id="at-chips"></div>
-            <div id="at-hits"></div>
-          </div>
-        </section>
-
-        <section class="group">
-          <div class="card-head"><span class="g-title">预览与提交</span></div>
-          <div class="card-body">
+          <div class="card-body collapse-content">
             <div class="f-row">
               <div class="field">
                 <label>计划时间</label>
@@ -137,10 +149,6 @@
                   <button class="chip" type="button" data-preset="now">立即发布</button>
                 </div>
               </div>
-            </div>
-            <div class="field">
-              <label>合成预览</label>
-              <div class="preview" id="preview-text"></div>
             </div>
             <div class="sum" id="composeSummary"></div>
           </div>
