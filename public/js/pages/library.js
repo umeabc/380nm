@@ -1,6 +1,6 @@
 'use strict';
 (async function () {
-  const { $, $$, icon, esc, api, toast, fmtTime, publishedImageMap, pubTip } = App;
+  const { $, $$, icon, esc, api, toast, fmtTime, publishedImageMap, pubTip, pendingImageMap, pendTip } = App;
   const state = {
     images: [], folders: [], jobs: [],
     libFolder: 'all', moveKeys: [],
@@ -72,19 +72,23 @@
   function renderLibrary() {
     renderFolderList();
     const pubMap = publishedImageMap(state.jobs);
+    const pendMap = pendingImageMap(state.jobs);
     const items = viewImages();
     const pubCount = items.filter((i) => pubMap[i.key]).length;
+    const pendCount = items.filter((i) => pendMap[i.key]).length;
     $('#lib-stats').textContent = items.length
-      ? `当前 ${items.length} 张${pubCount ? ` · ${pubCount} 张已发布过` : ''}`
+      ? `当前 ${items.length} 张${pendCount ? ` · ${pendCount} 张待发布` : ''}${pubCount ? ` · ${pubCount} 张已发布过` : ''}`
       : '';
     $('#lib-grid').innerHTML = items.map((img) => {
       const pub = pubMap[img.key];
+      const pend = pendMap[img.key];
       const picked = state.selectedKeys.has(img.key);
-      return `<div class="cell ${pub ? 'pub' : ''} ${picked ? 'picked' : ''}" data-lib="${esc(img.key)}"
-           title="${esc(img.name)}（${fmtTime(img.createdAt)}${pubTip(pub)}）">
+      return `<div class="cell ${pub ? 'pub' : ''} ${pend ? 'pending' : ''} ${picked ? 'picked' : ''}" data-lib="${esc(img.key)}"
+           title="${esc(img.name)}（${fmtTime(img.createdAt)}${pendTip(pend)}${pubTip(pub)}）">
          <img referrerpolicy="no-referrer" src="${esc(img.url)}" alt="" loading="lazy">
          <span class="selbox" data-check="${esc(img.key)}" title="选择"></span>
          ${pub ? `<span class="pub-badge">已发布${pub.count > 1 ? ' ×' + pub.count : ''}</span>` : ''}
+         ${pend ? `<span class="pend-badge">待发布${pend.count > 1 ? ' ×' + pend.count : ''}</span>` : ''}
          ${!isAdminAll() ? `<button class="mv" data-libmove="${esc(img.key)}" title="移动到文件夹">${icon('layers', 12)}</button>` : ''}
          <button class="del" data-libdel="${esc(img.key)}" title="删除">×</button>
        </div>`;
