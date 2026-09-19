@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>图片库 · 380nm</title>
-<link rel="stylesheet" href="/css/app.css?v=5">
+<link rel="stylesheet" href="/css/app.css?v=6">
 </head>
 <body>
 <div class="sidebar" id="sidebar"></div>
@@ -33,15 +33,25 @@
               <button class="btn" id="btn-import" style="min-height:40px">导入到当前文件夹</button>
             </div>
             <div class="drop" id="lib-drop">点击选择或拖拽图片上传（上传到当前所选文件夹）</div>
-        <input type="file" id="lib-file" accept="image/*" multiple style="display:none">
-        <div class="img-grid" id="lib-grid" style="margin-top:14px"></div>
+            <input type="file" id="lib-file" accept="image/*" multiple style="display:none">
+            <div class="lib-toolbar" id="lib-toolbar">
+              <span class="hint" id="sel-count">未选择图片</span>
+              <button class="btn sm" id="btn-sel-all" type="button">全选</button>
+              <button class="btn sm" id="btn-sel-none" type="button">清空选择</button>
+              <span class="spacer"></span>
+              <button class="btn sm" id="btn-batch-move" type="button" disabled>移动到…</button>
+              <button class="btn sm" id="btn-batch-export" type="button" disabled>导出 ZIP</button>
+              <button class="btn sm danger" id="btn-batch-del" type="button" disabled>删除所选</button>
+              <button class="btn sm danger" id="btn-clear-view" type="button" title="删除当前视图中全部图片（被待发布任务引用的会跳过）">清空当前视图</button>
+            </div>
+            <div class="img-grid" id="lib-grid" style="margin-top:14px"></div>
       </div>
     </div>
   </main>
 </div>
 <div id="toast-wrap"></div>
 <div id="move-menu" class="move-menu" style="display:none"></div>
-<script src="/js/common.js?v=5"></script>
-<script src="/js/pages/library.js?v=5"></script>
+<script src="/js/common.js?v=6"></script>
+<script src="/js/pages/library.js?v=6"></script>
 </body>
 </html>

@@ -18,11 +18,11 @@
         $('#st-failed').textContent = c.failed;
         const done = c.published + c.failed;
         const rate = done ? Math.round(c.published / done * 100) : null;
-        $('#st-rate').innerHTML = rate === null ? '--' : rate + '<small style="font-size:13px;color:var(--muted)">%</small>';
+        $('#st-rate').innerHTML = rate === null ? '--' : rate + '<small style="font-size:13px;color:var(--text-3)">%</small>';
         $('#ov-ring-v').innerHTML = rate === null ? '--' : `${rate}<small>%</small>`;
         $('#ov-ring').style.background = rate === null
           ? 'conic-gradient(#e2e0ee 0 100%)'
-          : `conic-gradient(var(--brand) 0 ${rate}%, #e2e0ee ${rate}% 100%)`;
+          : `conic-gradient(var(--primary) 0 ${rate}%, #e2e0ee ${rate}% 100%)`;
 
         // 未来7天柱状图
         const days = [];

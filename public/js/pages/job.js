@@ -51,7 +51,7 @@
     const imgs = (j.images || []);
     const jobLogs = state.logs.filter((l) => l.jobId === j.id).slice(0, 10);
     const cd = j.status === 'pending' ? `<div class="count" style="font-size:13px" data-ts="${j.scheduledAt}"></div>` : '';
-    const link = j.dynamicUrl ? `<a href="${esc(j.dynamicUrl)}" target="_blank" rel="noopener" style="color:var(--brand)">${esc(j.dynamicUrl)}</a>` : '-';
+    const link = j.dynamicUrl ? `<a href="${esc(j.dynamicUrl)}" target="_blank" rel="noopener" style="color:var(--primary)">${esc(j.dynamicUrl)}</a>` : '-';
     const owner = ownerName(j);
     const pubMap = publishedImageMap(state.jobs);
     $('#job-detail').innerHTML = `
@@ -89,8 +89,8 @@
               ${j.type ? `<dt>内容类型</dt><dd>${TYPE_LABEL[j.type] || esc(j.type)}</dd>` : ''}
               ${(j.tags || []).length ? `<dt>标签</dt><dd>${j.tags.map((t) => `<span class="tag-sm">${esc(t)}</span>`).join(' ')}</dd>` : ''}
               ${j.title ? `<dt>标题</dt><dd>${esc(j.title)}</dd>` : ''}
-              ${j.topic && j.topic.name ? `<dt>话题</dt><dd><a href="https://m.bilibili.com/topic-detail?topic_id=${j.topic.id}&topic_name=${encodeURIComponent(j.topic.name)}" target="_blank" rel="noopener" style="color:var(--brand)">#${esc(j.topic.name)}#</a></dd>` : ''}
-              ${(j.mentions || []).length ? `<dt>提及</dt><dd>${j.mentions.map((m) => `<a href="https://space.bilibili.com/${esc(m.uid)}" target="_blank" rel="noopener" style="color:var(--brand)">@${esc(m.name)}</a>`).join('、')}</dd>` : ''}
+              ${j.topic && j.topic.name ? `<dt>话题</dt><dd><a href="https://m.bilibili.com/topic-detail?topic_id=${j.topic.id}&topic_name=${encodeURIComponent(j.topic.name)}" target="_blank" rel="noopener" style="color:var(--primary)">#${esc(j.topic.name)}#</a></dd>` : ''}
+              ${(j.mentions || []).length ? `<dt>提及</dt><dd>${j.mentions.map((m) => `<a href="https://space.bilibili.com/${esc(m.uid)}" target="_blank" rel="noopener" style="color:var(--primary)">@${esc(m.name)}</a>`).join('、')}</dd>` : ''}
               <dt>任务ID</dt><dd class="hint" style="font-family:Consolas,monospace;font-size:12px">${esc(j.id)}</dd>
               <dt>${j.status === 'published' ? '发布时间' : '计划时间'}</dt>
               <dd>${esc(fmtTime(j.status === 'published' ? j.publishedAt : j.scheduledAt))}</dd>
