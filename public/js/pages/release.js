@@ -505,9 +505,17 @@
       toast((ERR_TEXT[state.fetch.error] || ERR_TEXT.network).t, 'err', 3200);
     }
   }
-  function startParse(url) {
+  function startParse(url, force) {
     const u = String(url || '').trim();
     if (!u) { toast('请先粘贴作品链接', 'warn'); return; }
+    if (state.fetch.status === 'loading') {
+      toast('正在解析中，请稍候…（无需重复触发）', 'warn');
+      return;
+    }
+    if (!force && state.fetch.status === 'done' && state.fetch.url === u) {
+      toast('该链接已解析过，如需重新抓取请点「重新解析」', 'warn');
+      return;
+    }
     const token = ++state.fetch.token;
     state.fetch = { status: 'loading', token, url: u, done: 0, slots: [], errorAt: -1, error: null, work: null, warn: '' };
     state.fetch.slots[0] = '正在识别链接…';
@@ -724,19 +732,30 @@
 
       /* ---- 链接抓取 ---- */
       const linkInput = $('#link-input');
-      const linkDeb = debounce(() => {
-        const v = linkInput.value.trim();
-        if (looksLikeWorkUrl(v)) startParse(v);
-      }, 600);
+      let linkTimer = null;
+      const scheduleParse = () => {
+        clearTimeout(linkTimer);
+        linkTimer = setTimeout(() => {
+          const v = linkInput.value.trim();
+          if (looksLikeWorkUrl(v)) startParse(v);
+        }, 600);
+      };
       linkInput.addEventListener('input', () => {
         const v = linkInput.value.trim();
         if (!looksLikeWorkUrl(v)) return;
-        linkDeb();
+        scheduleParse();
       });
       linkInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); startParse(linkInput.value); }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          clearTimeout(linkTimer);
+          startParse(linkInput.value);
+        }
       });
-      $('#btn-parse').addEventListener('click', () => startParse(linkInput.value));
+      $('#btn-parse').addEventListener('click', () => {
+        clearTimeout(linkTimer);
+        startParse(linkInput.value);
+      });
       $('#creditInput').addEventListener('input', (e) => {
         state.credit.text = e.target.value;
         state.credit.edited = true;
@@ -748,8 +767,8 @@
         insertIntoVar(text, '已插入到');
       });
       $('#fetchState').addEventListener('click', (e) => {
-        if (e.target.closest('#btnReparse')) { startParse(state.fetch.url || linkInput.value); return; }
-        if (e.target.closest('#btnClearFetch')) { clearFetch(); return; }
+        if (e.target.closest('#btnReparse')) { startParse(state.fetch.url || linkInput.value, true); return; }
+        if (e.target.closest('#btnClearFetch')) { clearTimeout(linkTimer); clearFetch(); return; }
       });
 
       $('#btn-submit').addEventListener('click', submitJob);

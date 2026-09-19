@@ -371,6 +371,18 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 .move-menu .mi{padding:8px 12px;border-radius:8px;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;gap:10px;align-items:center}
 .move-menu .mi:hover{background:var(--primary-soft);color:var(--primary)}
 
+/* ================= 图库多选与批量操作 ================= */
+.lib-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 0 4px;border-bottom:1px solid var(--border);margin-bottom:12px}
+.lib-toolbar .spacer{flex:1}
+.img-grid.selecting{user-select:none}
+.selbox{position:absolute;top:4px;left:4px;width:18px;height:18px;border-radius:5px;border:1.6px solid rgba(255,255,255,.9);background:rgba(20,22,40,.45);cursor:pointer;z-index:2;display:grid;place-items:center;transition:.12s}
+.selbox::after{content:'✓';color:transparent;font-size:11.5px;font-weight:700;line-height:1}
+.selbox:hover{background:rgba(108,92,231,.8)}
+.cell.picked{border:2px solid var(--primary);box-shadow:0 0 0 3px rgba(108,92,231,.16)}
+.cell.picked .selbox{background:var(--primary);border-color:var(--primary)}
+.cell.picked .selbox::after{color:#fff}
+.marquee{position:fixed;z-index:90;border:1.5px solid var(--primary);background:rgba(108,92,231,.13);border-radius:4px;pointer-events:none}
+
 /* ================= 话题 / @提及 / 预览 ================= */
 .topic-wrap{position:relative}
 .topic-dd{position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:var(--r-md);box-shadow:0 12px 32px -8px rgba(20,22,40,.3);z-index:40;max-height:240px;overflow:auto}

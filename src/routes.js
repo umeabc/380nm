@@ -13,6 +13,7 @@ const upload = multer({
 });
 
 const { importFromUrl, parseWork, ImportError } = require('./importers');
+const { buildZip } = require('./zip');
 
 const MAX_IMAGES = 9;
 const MAX_IMPORT_IMAGES = 30;
@@ -636,6 +637,97 @@ module.exports = function createRoutes(ctx) {
       await store.deleteImage(key);
       await store.addLog('info', `删除图片: ${key}`, { userId: req.user.id });
       res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // 图片是否被待发布/发布中任务引用
+  function imageInUse(key) {
+    return store.listJobs().some(
+      (j) => ['pending', 'publishing'].includes(j.status) && (j.images || []).some((i) => i.key === key)
+    );
+  }
+
+  // 批量删除（PRD：图库多选批量操作）
+  router.post('/images/delete-batch', requireAuth, async (req, res, next) => {
+    try {
+      const keys = Array.isArray(req.body && req.body.keys) ? req.body.keys : [];
+      if (!keys.length) return res.status(400).json({ error: '未选择图片' });
+      let deleted = 0;
+      const skipped = [];
+      for (const key of keys) {
+        const img = store.listImages().find((i) => i.key === key);
+        if (!img || !canTouch(img, req)) { skipped.push({ key, reason: '不存在' }); continue; }
+        if (imageInUse(key)) { skipped.push({ key, name: img.name, reason: '被待发布任务使用' }); continue; }
+        await storage.delete(key).catch(() => {});
+        await store.deleteImage(key);
+        deleted++;
+      }
+      await store.addLog('info', `批量删除图片 ${deleted} 张${skipped.length ? `（跳过 ${skipped.length} 张）` : ''}`, { userId: req.user.id });
+      res.json({ deleted, skipped });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // 清空当前视图（PRD：一键清空）
+  router.post('/images/clear', requireAuth, async (req, res, next) => {
+    try {
+      const view = String((req.body && req.body.view) || 'none');
+      const pool = store.listImages().filter(scopeFilter(req));
+      const targets = pool.filter((i) =>
+        view === 'all' ? true : view === 'none' ? !i.folderId : i.folderId === view);
+      let deleted = 0;
+      let blocked = 0;
+      for (const img of targets) {
+        if (imageInUse(img.key)) { blocked++; continue; }
+        await storage.delete(img.key).catch(() => {});
+        await store.deleteImage(img.key);
+        deleted++;
+      }
+      await store.addLog('info', `清空图库视图（${view}）：删除 ${deleted} 张${blocked ? `，${blocked} 张因被待发布任务引用跳过` : ''}`, { userId: req.user.id });
+      res.json({ deleted, blocked, total: targets.length });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // 导出为 ZIP（PRD：批量导出）
+  router.post('/images/export', requireAuth, async (req, res, next) => {
+    try {
+      const keys = Array.isArray(req.body && req.body.keys) ? req.body.keys : [];
+      if (!keys.length) return res.status(400).json({ error: '未选择图片' });
+      const used = new Set();
+      const entries = [];
+      let lost = 0;
+      for (const key of keys) {
+        const img = store.listImages().find((i) => i.key === key);
+        if (!img || !canTouch(img, req)) { lost++; continue; }
+        let buf;
+        try {
+          const got = await storage.get(key);
+          buf = got.buffer;
+        } catch (e) { lost++; continue; }
+        let name = String(img.name || key).replace(/[\\/:*?"<>|\r\n\t]+/g, '_').slice(0, 120) || 'image';
+        if (used.has(name)) {
+          const dot = name.lastIndexOf('.');
+          const stem = dot > 0 ? name.slice(0, dot) : name;
+          const ext = dot > 0 ? name.slice(dot) : '';
+          let n = 2;
+          while (used.has(`${stem}(${n})${ext}`)) n++;
+          name = `${stem}(${n})${ext}`;
+        }
+        used.add(name);
+        entries.push({ name, buffer: buf, mtime: new Date(img.createdAt || Date.now()) });
+      }
+      if (!entries.length) return res.status(400).json({ error: '没有可导出的图片（可能文件已丢失）' });
+      const zip = buildZip(entries);
+      const d = new Date();
+      const ts = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+      res.setHeader('content-type', 'application/zip');
+      res.setHeader('content-disposition', `attachment; filename="380nm-images-${ts}.zip"`);
+      res.send(zip);
     } catch (e) {
       next(e);
     }

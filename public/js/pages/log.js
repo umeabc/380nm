@@ -9,7 +9,7 @@
     const canSeeOwner = App.state.user.role === 'admin' && App.state.scopeAll;
     $('#log-list').innerHTML = state.logs.map((l) => {
       const m = lv[l.level] || ['gray', l.level];
-      const jobLink = l.jobId ? ` <a href="/queue/${esc(l.jobId)}" style="color:var(--brand);font-size:12px">查看任务 →</a>` : '';
+      const jobLink = l.jobId ? ` <a href="/queue/${esc(l.jobId)}" style="color:var(--primary);font-size:12px">查看任务 →</a>` : '';
       const owner = canSeeOwner && l.userId
         ? `<span class="owner-tag">${esc((state.users.find((x) => x.id === l.userId) || {}).name || '?')}</span>` : '';
       return `<div class="log-line">
