@@ -2,7 +2,7 @@
 (async function () {
   const { $, $$, icon, esc, api, toast, renderText, debounce, toLocalInput, publishedImageMap, pubTip } = App;
 
-  const IMG_PER_PAGE = 6;
+  const IMG_PER_PAGE = 10;
   const FETCH_STEPS = ['识别平台', '请求作品页', '抓取原图', '提取作者信息'];
   const ERR_TEXT = {
     invalid: { t: '无法识别的链接', s: '仅支持 X(Twitter) 与 Pixiv 的作品页链接。示例：x.com/用户名/status/ID、pixiv.net/artworks/ID' },
@@ -266,10 +266,15 @@
     return state.pickFolder !== 'all' && state.pickFolder !== 'none' ? state.pickFolder : null;
   }
   function renderSelected() {
-    $('#sel-strip').innerHTML = state.selected.map((img, i) =>
+    const box = $('#sel-strip');
+    const limit = Math.min(10, state.selected.length);
+    box.innerHTML = state.selected.slice(0, limit).map((img, i) =>
       `<div class="cell on" data-rm="${esc(img.key)}" title="点击移除">
          <img referrerpolicy="no-referrer" src="${esc(img.url)}" alt=""><span class="ord">${i + 1}</span>
        </div>`).join('');
+    if (state.selected.length > 10) {
+      box.innerHTML += `<div class="cell more" title="还有 ${state.selected.length - 10} 张">+${state.selected.length - 10}</div>`;
+    }
   }
   function renderImageGrid() {
     const tpl = currentTemplate();
@@ -535,11 +540,6 @@
       return (v && String(v).trim()) ? '<span class="k">' + esc(v) + '</span>' : '<span class="ph">{{' + esc(k) + '}}</span>';
     });
   }
-  function renderPreview() {
-    let html = composeBodyHTML();
-    if (state.topic) html += ' <span class="tag">#' + esc(state.topic.name) + '#</span>';
-    $('#preview-text').innerHTML = html;
-  }
   function renderSummary() {
     const tpl = currentTemplate();
     const box = $('#composeSummary');
@@ -555,7 +555,6 @@
       `@提及 ${state.atMentions.length} 人 · ` +
       `未填变量 <span class="${emptyVar ? 'bad' : ''}">${emptyVar}</span> 个</div>` +
       `<div>作者说明：${c ? '<span class="ok">' + esc(c) + '</span>' : '<span class="no">未填写</span>'}${state.credit.edited ? '（手动修改）' : ''}</div>`;
-    renderPreview();
   }
   function renderSubmit() { renderSummary(); }
   function flash(sel) {
@@ -769,6 +768,15 @@
       $('#fetchState').addEventListener('click', (e) => {
         if (e.target.closest('#btnReparse')) { startParse(state.fetch.url || linkInput.value, true); return; }
         if (e.target.closest('#btnClearFetch')) { clearTimeout(linkTimer); clearFetch(); return; }
+      });
+
+      /* ---- 折叠栏初始化 ---- */
+      $$('.collapse-toggle').forEach((toggle) => {
+        toggle.addEventListener('click', (e) => {
+          const group = toggle.closest('.group');
+          if (!group) return;
+          group.classList.toggle('collapsed');
+        });
       });
 
       $('#btn-submit').addEventListener('click', submitJob);
