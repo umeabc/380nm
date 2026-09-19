@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>账号库 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page" id="page">
+    <section class="group">
+      <div class="card-head">
+        <span class="g-title" id="form-title">添加账号</span>
+        <span class="hint-r">署名槽位与 @提及 的候选账号按角色过滤</span>
+      </div>
+      <div class="card-body">
+        <div class="f-row">
+          <div class="field"><label>账号名（显示名）</label><input class="ctl" id="la-name" placeholder="如：白尾絵里厨"></div>
+          <div class="field"><label>handle（不含 @）</label><input class="ctl" id="la-handle" placeholder="如：tail_eri"></div>
+          <div class="field" style="max-width:180px"><label>角色</label><select class="ctl" id="la-role">
+            <option value="翻译">翻译</option>
+            <option value="嵌字">嵌字</option>
+            <option value="原作者">原作者</option>
+          </select></div>
+          <div class="field" style="max-width:220px"><label>B站 uid（可选，填了则 @ 可点击跳转）</label><input class="ctl" id="la-uid" placeholder="如：592632"></div>
+        </div>
+        <div class="frow">
+          <button class="btn primary" id="btn-save">添加账号</button>
+          <button class="btn" id="btn-cancel" style="display:none">取消编辑</button>
+        </div>
+      </div>
+    </section>
+    <section id="lib-list"></section>
+  </main>
+</div>
+<div id="toast-wrap"></div>
+<script src="/js/common.js"></script>
+<script src="/js/pages/libaccounts.js"></script>
+</body>
+</html>

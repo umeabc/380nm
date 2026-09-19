@@ -1,3 +1,35 @@
+/** 内置标签集合（PRD F-Q1：0~3 个，当前内置；后续可改为后台配置） */
+const PRESET_TAGS = ['日常', '翻译', '嵌字', '活动', '公告'];
+
+/** 内置内容类型（PRD F-Q5） */
+const TASK_TYPES = ['翻嵌', '翻译', '转载', '原创'];
+
+/** 内容类型 → 署名槽位 */
+const TYPE_SLOTS = {
+  '翻嵌': ['trans', 'typo', 'orig'],
+  '翻译': ['trans', 'orig'],
+  '转载': ['orig'],
+  '原创': []
+};
+const SLOT_LABELS = { trans: '@翻译账号', typo: '@嵌字账号', orig: '@原作者账号' };
+
+/** 署名片段合成（PRD F-Q5 正文模板）
+ *  slots: { trans: {handle}, typo: {handle}, orig: {handle} }（快照，带 handle） */
+function slotSegment(type, slots = {}) {
+  const pick = (k) => (slots[k] && slots[k].handle ? '@' + slots[k].handle : null);
+  if (type === '翻嵌') {
+    const a = pick('trans'), b = pick('typo'), c = pick('orig');
+    if (a && b && c) return `【翻&嵌 ${a} ${b} 原作X${c}】`;
+  } else if (type === '翻译') {
+    const a = pick('trans'), c = pick('orig');
+    if (a && c) return `【翻&译 ${a} 原作X${c}】`;
+  } else if (type === '转载') {
+    const c = pick('orig');
+    if (c) return `【原作X${c}】`;
+  }
+  return '';
+}
+
 function DEFAULT_TEMPLATES() {
   return [
     {
@@ -35,4 +67,4 @@ function DEFAULT_TEMPLATES() {
   ];
 }
 
-module.exports = { DEFAULT_TEMPLATES };
+module.exports = { DEFAULT_TEMPLATES, PRESET_TAGS, TASK_TYPES, TYPE_SLOTS, SLOT_LABELS, slotSegment };
