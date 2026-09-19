@@ -16,14 +16,21 @@
     pixiv: '作者：{author} P：{pixivId}'
   };
   const PLATFORM_LABEL = { x: 'X', pixiv: 'Pixiv' };
+  /* 人员槽位：账号库已取消「角色」分类，翻译 / 嵌字 共用同一份在岗人员清单，
+     这里只是同一个人员池的两个具名槽位（占位符 {{translator}} / {{typesetter}}） */
+  const PERSON_SLOTS = [
+    { key: 'translator', label: '翻译人员', hint: '候选：账号库·在岗翻译账号', empty: '— 从账号库选择在岗翻译账号 —' },
+    { key: 'typesetter', label: '嵌字人员', hint: '候选：账号库·在岗嵌字账号', empty: '— 从账号库选择在岗嵌字账号 —' }
+  ];
   const ICON_CHECK = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17l9-10"/></svg>';
   const ICON_CROSS = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
   const ICON_SPIN = '<svg class="spin" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 3a9 9 0 1 0 9 9"/></svg>';
 
   const state = {
-    accounts: [], templates: [], images: [], folders: [], jobs: [], recentTopics: [],
+    accounts: [], templates: [], images: [], folders: [], jobs: [], recentTopics: [], libAccounts: [],
     selected: [], pickFolder: 'all', pickPage: 1,
     topic: null, atMentions: [],
+    people: { translator: null, typesetter: null },
     varsByTpl: {}, vars: {},
     lastVarEl: null,
     credit: { text: '', edited: false, work: null },
@@ -43,6 +50,46 @@
     const body = String(t.content || '').replace(/\s+/g, ' ').slice(0, 60);
     h.textContent = `模板：${t.name} · ${(t.variables || []).length} 个变量 · 图片上限 ${t.maxImages} · 正文 ${body}${String(t.content).length > 60 ? '…' : ''}`;
   }
+  /* ================= 人员槽位（模板变量区 · 翻译人员 / 嵌字人员） ================= */
+  function peoplePool() {
+    return (state.libAccounts || []).filter((a) => a.status !== '离岗');
+  }
+  function renderPeople() {
+    const box = $('#var-people');
+    if (!box) return;
+    const pool = peoplePool();
+    box.innerHTML = PERSON_SLOTS.map((s) => {
+      const cur = state.people[s.key] ? state.people[s.key].id : '';
+      return `<div class="field slot-row" data-slotrow="${s.key}">
+        <div class="var-label">
+          <span class="vl-title">${esc(s.label)}</span>
+          <span class="badge-auto">自动</span>
+          <span class="req" title="必填">*</span>
+          <span class="vl-hint">${esc(s.hint)}</span>
+        </div>
+        <select class="ctl" data-person="${s.key}">
+          <option value="">${esc(s.empty)}</option>
+          ${pool.map((a) => `<option value="${esc(a.id)}" ${cur === a.id ? 'selected' : ''}>${esc(a.name)}　@${esc(a.handle)}</option>`).join('')}
+        </select>
+        ${pool.length ? '' : '<div class="foot-hint">账号库暂无在岗成员，请先到「账号库」添加账号</div>'}
+      </div>`;
+    }).join('');
+    $$('#var-people select[data-person]').forEach((sel) => sel.addEventListener('change', () => {
+      const key = sel.dataset.person;
+      const p = pool.find((a) => a.id === sel.value) || null;
+      state.people[key] = p ? { id: p.id, name: p.name, handle: p.handle, uid: p.uid || '' } : null;
+      const row = sel.closest('[data-slotrow]');
+      if (row) row.classList.remove('err');
+      renderSubmit();
+      if (p) toast(`已绑定${key === 'translator' ? '翻译人员' : '嵌字人员'}：${p.name}（@${p.handle}）`, 'ok', 2000);
+    }));
+  }
+  /** 当前模板正文是否用到该槽位占位符 —— 用到才算必填 */
+  function tplUsesSlot(key) {
+    const t = currentTemplate();
+    return !!t && new RegExp('\\{\\{\\s*' + key + '\\s*\\}\\}').test(String(t.content || ''));
+  }
+
   function saveVarsToTpl() {
     if (activeTplId) state.varsByTpl[activeTplId] = { ...state.vars };
   }
@@ -93,6 +140,11 @@
       if (el.dataset.mention !== undefined && v && !v.startsWith('@')) v = '@' + v.trim();
       vars[el.dataset.key] = v;
     });
+    // 人员槽位并入变量：{{translator}} / {{typesetter}} 取所选成员的 @handle
+    for (const s of PERSON_SLOTS) {
+      const p = state.people[s.key];
+      vars[s.key] = p ? '@' + p.handle : '';
+    }
     return vars;
   }
   function collectMentions() {
@@ -266,15 +318,10 @@
     return state.pickFolder !== 'all' && state.pickFolder !== 'none' ? state.pickFolder : null;
   }
   function renderSelected() {
-    const box = $('#sel-strip');
-    const limit = Math.min(10, state.selected.length);
-    box.innerHTML = state.selected.slice(0, limit).map((img, i) =>
+    $('#sel-strip').innerHTML = state.selected.map((img, i) =>
       `<div class="cell on" data-rm="${esc(img.key)}" title="点击移除">
          <img referrerpolicy="no-referrer" src="${esc(img.url)}" alt=""><span class="ord">${i + 1}</span>
        </div>`).join('');
-    if (state.selected.length > 10) {
-      box.innerHTML += `<div class="cell more" title="还有 ${state.selected.length - 10} 张">+${state.selected.length - 10}</div>`;
-    }
   }
   function renderImageGrid() {
     const tpl = currentTemplate();
@@ -535,10 +582,16 @@
   function composeBodyHTML() {
     const tpl = currentTemplate();
     if (!tpl) return '<span class="ph">（暂无模板）</span>';
+    const vars = collectVariables();
     return String(tpl.content).replace(/\{\{\s*([\w$\-\u4e00-\u9fa5]+)\s*\}\}/g, (m, k) => {
-      const v = state.vars[k];
+      const v = vars[k];
       return (v && String(v).trim()) ? '<span class="k">' + esc(v) + '</span>' : '<span class="ph">{{' + esc(k) + '}}</span>';
     });
+  }
+  function renderPreview() {
+    let html = composeBodyHTML();
+    if (state.topic) html += ' <span class="tag">#' + esc(state.topic.name) + '#</span>';
+    $('#preview-text').innerHTML = html;
   }
   function renderSummary() {
     const tpl = currentTemplate();
@@ -548,13 +601,18 @@
     const n = state.selected.length;
     const over = n > limit;
     const emptyVar = (tpl.variables || []).filter((v) => !String(state.vars[v.key] || '').trim()).length;
+    // 模板正文用到的人员槽位才算必填
+    const needSlots = PERSON_SLOTS.filter((s) => tplUsesSlot(s.key));
+    const filled = needSlots.filter((s) => state.people[s.key]).length;
     const c = state.credit.text;
     box.innerHTML =
       `<div>配图 <span class="${over ? 'bad' : ''}">${n} / ${limit}</span> 张 · ` +
       `话题 ${state.topic ? '<span class="ok">#' + esc(state.topic.name) + '#</span>' : '<span class="no">未选择</span>'} · ` +
       `@提及 ${state.atMentions.length} 人 · ` +
+      (needSlots.length ? `人员槽位 <span class="${filled < needSlots.length ? 'bad' : 'ok'}">${filled} / ${needSlots.length}</span> · ` : '') +
       `未填变量 <span class="${emptyVar ? 'bad' : ''}">${emptyVar}</span> 个</div>` +
       `<div>作者说明：${c ? '<span class="ok">' + esc(c) + '</span>' : '<span class="no">未填写</span>'}${state.credit.edited ? '（手动修改）' : ''}</div>`;
+    renderPreview();
   }
   function renderSubmit() { renderSummary(); }
   function flash(sel) {
@@ -584,6 +642,9 @@
       if (state.selected.length > limit) errs.push({ t: `配图 ${state.selected.length} 张，超过当前模板上限 ${limit} 张`, sel: '' });
       const emptyVar = (tpl.variables || []).find((v) => !String(collectVariables()[v.key] || '').trim());
       if (emptyVar) errs.push({ t: `「${emptyVar.label || emptyVar.key}」尚未填写`, sel: `#var-fields [data-key="${emptyVar.key}"]` });
+      // 模板正文用到的人员槽位为必填（翻译人员 / 嵌字人员）
+      const missSlot = PERSON_SLOTS.find((s) => tplUsesSlot(s.key) && !state.people[s.key]);
+      if (missSlot) errs.push({ t: `「${missSlot.label}」尚未从账号库选择（{{${missSlot.key}}} 为必填）`, sel: `#var-people [data-slotrow="${missSlot.key}"] select` });
     }
     if (errs.length) {
       errs.forEach((e) => { if (e.sel) flash(e.sel); });
@@ -628,13 +689,14 @@
     active: 'release',
     title: '发布动态',
     ready: async () => {
-      const [accounts, templates, images, folders, recent, jobs] = await Promise.all([
+      const [accounts, templates, images, folders, recent, jobs, libAccs] = await Promise.all([
         api('GET', '/api/accounts'),
         api('GET', '/api/templates'),
         api('GET', '/api/images'),
         api('GET', '/api/folders'),
         api('GET', '/api/topics/recent').catch(() => ({ topics: [] })),
-        api('GET', '/api/jobs').catch(() => ({ jobs: [] }))
+        api('GET', '/api/jobs').catch(() => ({ jobs: [] })),
+        api('GET', '/api/lib-accounts').catch(() => ({ accounts: [] }))
       ]);
       state.accounts = accounts.accounts;
       state.templates = templates.templates;
@@ -642,6 +704,7 @@
       state.folders = folders.folders;
       state.recentTopics = recent.topics;
       state.jobs = jobs.jobs;
+      state.libAccounts = libAccs.accounts || [];
 
       $('#no-account-warn').style.display = state.accounts.length ? 'none' : 'flex';
       const accSel = $('#sel-account');
@@ -658,6 +721,7 @@
       renderTopicChips();
       renderAtChips();
       renderPickFolders();
+      renderPeople();
       onTemplateChange(false);
       renderFetch();
       renderSubmit();
@@ -768,15 +832,6 @@
       $('#fetchState').addEventListener('click', (e) => {
         if (e.target.closest('#btnReparse')) { startParse(state.fetch.url || linkInput.value, true); return; }
         if (e.target.closest('#btnClearFetch')) { clearTimeout(linkTimer); clearFetch(); return; }
-      });
-
-      /* ---- 折叠栏初始化 ---- */
-      $$('.collapse-toggle').forEach((toggle) => {
-        toggle.addEventListener('click', (e) => {
-          const group = toggle.closest('.group');
-          if (!group) return;
-          group.classList.toggle('collapsed');
-        });
       });
 
       $('#btn-submit').addEventListener('click', submitJob);

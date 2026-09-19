@@ -7,7 +7,6 @@
   const TYPE_LABEL = { '翻嵌': '翻&嵌', '翻译': '纯翻译', '转载': '转载原作', '原创': '原创' };
   const SLOT_ORDER = { '翻嵌': ['trans', 'typo', 'orig'], '翻译': ['trans', 'orig'], '转载': ['orig'], '原创': [] };
   const SLOT_LABEL = { trans: '@翻译账号', typo: '@嵌字账号', orig: '@原作者账号' };
-  const SLOT_ROLE = { trans: '翻译', typo: '嵌字', orig: '原作者' };
   function slotSegmentHTML(j) {
     const type = j.type || '原创';
     const need = SLOT_ORDER[type] || [];
@@ -182,12 +181,13 @@
       const need = SLOT_ORDER[state.editType] || [];
       $('#e-slot-field').style.display = need.length ? '' : 'none';
       $('#e-slots').innerHTML = need.map((k) => {
-        const pool = state.libAccounts.filter((a) => a.role === SLOT_ROLE[k]);
+        // 账号库已取消「角色」分类：翻译 / 嵌字 共用同一份在岗人员清单
+        const pool = state.libAccounts.filter((a) => a.status !== '离岗');
         const cur = state.editSlots[k] && state.editSlots[k].id;
         return `<div class="slot" data-slotwrap="${k}">
           <span class="slot-role">${SLOT_LABEL[k]}</span>
           <select class="ctl" data-slot="${k}">
-            <option value="">— 从账号库选择（${SLOT_ROLE[k]}）—</option>
+            <option value="">— 从账号库选择在岗成员 —</option>
             ${pool.map((a) => `<option value="${a.id}" ${cur === a.id ? 'selected' : ''}>${esc(a.name)}　@${esc(a.handle)}</option>`).join('')}
           </select></div>`;
       }).join('');
