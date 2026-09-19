@@ -351,6 +351,8 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 .mini-empty{border:1px dashed var(--border-2);border-radius:var(--r-md);padding:26px 14px;text-align:center;color:var(--text-3);font-size:12px;line-height:1.7}
 .pub-badge{position:absolute;left:4px;bottom:4px;background:rgba(22,163,74,.92);color:#fff;font-size:10px;font-weight:700;border-radius:6px;padding:0 6px;line-height:16px}
 .cell.pub{border:2px solid var(--green)}
+.pend-badge{position:absolute;right:4px;bottom:4px;background:rgba(217,119,6,.94);color:#fff;font-size:10px;font-weight:700;border-radius:6px;padding:0 6px;line-height:16px}
+.cell.pending{border:2px solid rgba(217,119,6,.85)}
 .cell.on{border:2px solid var(--primary)}
 .cell .ord{position:absolute;top:5px;left:5px;background:var(--primary);color:#fff;font-size:10.5px;font-weight:700;border-radius:6px;padding:0 6px;line-height:17px;display:none}
 .cell.on .ord{display:block}

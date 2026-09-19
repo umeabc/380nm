@@ -294,6 +294,23 @@ window.App = (function () {
   function pubTip(pub) {
     return pub ? ` · 已随 ${pub.count} 条动态发布，最近 ${fmtTime(pub.last)}` : '';
   }
+  function pendingImageMap(jobs) {
+    const m = {};
+    for (const j of jobs || []) {
+      if (!['pending', 'publishing'].includes(j.status)) continue;
+      const t = j.scheduledAt || '';
+      for (const i of (j.images || [])) {
+        const cur = m[i.key] || { count: 0, next: null };
+        cur.count++;
+        if (t && (!cur.next || new Date(t) < new Date(cur.next))) cur.next = t;
+        m[i.key] = cur;
+      }
+    }
+    return m;
+  }
+  function pendTip(pend) {
+    return pend ? ` · 已加入待发布队列（${pend.count} 条任务${pend.next ? `，最近 ${fmtTime(pend.next)}` : ''}）` : '';
+  }
 
   /* ---------------- 页面启动 ---------------- */
   async function boot(cfg) {
@@ -314,6 +331,6 @@ window.App = (function () {
   return {
     $, $$, icon, esc, pad, fmtTime, fmtShort, toLocalInput, fmtDuration, snippet, renderText, debounce,
     api, toast, state, NAV, renderShell, refreshBadge, closeDrawer, openPwModal,
-    publishedImageMap, pubTip, boot
+    publishedImageMap, pubTip, pendingImageMap, pendTip, boot
   };
 })();
