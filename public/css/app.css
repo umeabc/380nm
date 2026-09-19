@@ -131,11 +131,6 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 
 /* ================= 卡片 / 分组 ================= */
 .group{background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);margin-bottom:10px;overflow:hidden;box-shadow:var(--sh)}
-.group.collapsible .card-head{cursor:pointer;user-select:none}
-.group.collapsible .collapse-icon{margin-left:auto;transition:transform .2s ease;color:var(--text-3)}
-.group.collapsible.collapsed .collapse-icon{transform:rotate(-90deg)}
-.group.collapsible .collapse-content{max-height:5000px;overflow:hidden;transition:max-height .3s ease,opacity .2s ease}
-.group.collapsible.collapsed .collapse-content{max-height:0;opacity:0}
 .card{background:#fff;border:1px solid var(--border);border-radius:var(--r-lg);padding:16px 18px;margin-bottom:10px;box-shadow:var(--sh)}
 .card-h{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:600;margin-bottom:12px;background:none;border:none;padding:0}
 .card-h .hint-r{margin-left:auto;font-weight:400;font-size:11.5px;color:var(--text-3);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
@@ -363,11 +358,9 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 .cell.on .ord{display:block}
 .cell .mv{position:absolute;top:4px;right:28px;background:rgba(20,22,40,.55);color:#fff;border:none;border-radius:7px;width:22px;height:22px;display:none;align-items:center;justify-content:center;cursor:pointer}
 .cell:hover .mv{display:flex}
-.sel-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-top:12px}
+.sel-strip{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .sel-strip:empty{display:none}
-.sel-strip .cell{width:auto;height:auto;aspect-ratio:1}
-.sel-strip .cell.more{display:flex;align-items:center;justify-content:center;background:var(--gray-soft);color:var(--text-2);font-size:13px;font-weight:600;border-style:dashed;cursor:default}
-.sel-strip .cell.more:hover{border-color:var(--border);transform:none}
+.sel-strip .cell{width:56px;height:56px;aspect-ratio:auto}
 .pick-folders{display:flex;flex-direction:column;gap:2px;max-height:300px;overflow:auto}
 .pick-pager{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:10px;font-size:12.5px;color:var(--text-3)}
 .pick-pager button{border:1px solid var(--border);background:#fff;border-radius:8px;padding:4px 12px;font-size:12.5px;color:var(--text)}
@@ -558,3 +551,18 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 @media(max-width:480px){
   .metrics,.stats-grid{grid-template-columns:1fr}
 }
+
+/* ================= 模板变量区：人员槽位 + 话题/@提及 并入（改动批次 v3） ================= */
+.var-sep{height:1px;background:var(--border);margin:16px 0 14px}
+.var-label{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-3);flex-wrap:wrap}
+.var-label .vl-title{font-size:12.5px;color:var(--text-2);font-weight:500}
+.var-label .vl-hint{margin-left:auto;color:var(--text-3);font-size:11.5px;text-align:right}
+.var-label .vl-hint b{color:var(--primary);font-weight:600}
+.var-label .req{color:var(--red);font-weight:700;line-height:1}
+.badge-auto{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:999px;background:var(--blue-soft);color:var(--blue);font-size:11px;font-weight:500;letter-spacing:.2px;white-space:nowrap}
+.badge-opt{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:999px;background:var(--gray-soft);color:var(--text-2);font-size:11px;white-space:nowrap}
+#var-people .slot-row{margin-bottom:14px}
+#var-people .slot-row:last-child{margin-bottom:0}
+#var-topic,#var-at{display:flex;flex-direction:column;gap:7px}
+#var-topic .chips,#var-at .chips{margin-top:1px}
+.foot-hint .hl{color:var(--text-2)}

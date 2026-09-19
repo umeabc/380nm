@@ -738,17 +738,19 @@ module.exports = function createRoutes(ctx) {
     res.json({ tags: PRESET_TAGS, types: TASK_TYPES, typeSlots: TYPE_SLOTS, slotLabels: SLOT_LABELS });
   });
 
-  // ===================== 账号库（署名成员目录） =====================
+  // ===================== 账号库（署名成员目录，不区分角色） =====================
+  const LIB_STATUSES = ['在岗', '离岗'];
   const validateLibAccount = (body) => {
     const name = String((body && body.name) || '').trim();
     const handle = String((body && body.handle) || '').trim().replace(/^@/, '');
-    const role = String((body && body.role) || '').trim();
+    // 已移除 role：账号库不再按角色分类，翻译 / 嵌字 共用同一份人员清单
+    const status = String((body && body.status) || '在岗').trim();
     const uid = String((body && body.uid) || '').trim();
     if (!name || name.length > 30) return { error: '账号名需 1-30 个字' };
     if (!handle || handle.length > 30) return { error: 'handle 需 1-30 个字符（不含 @）' };
-    if (!['翻译', '嵌字', '原作者'].includes(role)) return { error: '角色需为 翻译 / 嵌字 / 原作者' };
+    if (!LIB_STATUSES.includes(status)) return { error: '在岗状态需为 在岗 / 离岗' };
     if (uid && !/^\d+$/.test(uid)) return { error: 'B站 uid 需为纯数字' };
-    return { acc: { name, handle, role, uid } };
+    return { acc: { name, handle, status, uid } };
   };
 
   router.get('/lib-accounts', requireAuth, (req, res) => {
