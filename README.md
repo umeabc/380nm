@@ -82,16 +82,24 @@ docker compose up -d --build     # 更新代码后重建
 | `PORT` | 8787 | 服务端口 |
 | `HOST` | 127.0.0.1 | 监听地址（Docker 内为 0.0.0.0） |
 | `STORAGE_DRIVER` | local | `local` 或 `r2` |
-| `UPLOAD_DIR` | data/uploads | 本地图片目录 |
+| `UPLOAD_DIR` | data/uploads | 本地图片目录（仅 `local` 驱动） |
 | `SCHEDULER_INTERVAL` | 20000 | 队列扫描间隔（毫秒） |
 | `MAX_ATTEMPTS` | 3 | 发布失败最大尝试次数 |
 | `RETRY_DELAY_MS` | 60000 | 重试间隔（毫秒） |
+| `R2_ACCOUNT_ID` | — | Cloudflare 账户 ID |
+| `R2_ACCESS_KEY_ID` | — | R2 API Token 的 Access Key ID |
+| `R2_SECRET_ACCESS_KEY` | — | R2 API Token 的 Secret |
+| `R2_BUCKET` | — | 存储桶名称 |
+| `R2_PUBLIC_BASE` | — | 公网访问前缀（r2.dev 或自定义域名），前端预览用 |
 
-### 启用 Cloudflare R2（预留能力）
+> Docker 部署时请把凭据写在 `docker-compose.yml` 同目录的 `.env`（已 gitignore），
+> compose 会自动读取并注入。参考 `.env.example`。
 
-1. `npm install @aws-sdk/client-s3`
-2. 创建 R2 Bucket 并生成 API Token
-3. 设置环境变量：
+### 启用 Cloudflare R2
+
+1. 创建 R2 Bucket，生成 API Token（权限选「对象读和写」即可）
+2. 为 Bucket 开启公网访问（r2.dev 子域或绑定自定义域名），得到 `R2_PUBLIC_BASE`
+3. 复制 `.env.example` 为 `.env` 并填写：
 
 ```bash
 STORAGE_DRIVER=r2
@@ -99,8 +107,55 @@ R2_ACCOUNT_ID=你的账户ID
 R2_ACCESS_KEY_ID=xxx
 R2_SECRET_ACCESS_KEY=xxx
 R2_BUCKET=bili-dyn
-R2_PUBLIC_BASE=https://pub-xxxx.r2.dev   # 用于前端预览
+R2_PUBLIC_BASE=https://pub-xxxx.r2.dev   # 或自定义域名
 ```
+
+4. 重启：`docker compose up -d`
+
+> `@aws-sdk/client-s3` 已列入 `dependencies`，镜像构建时自动安装，无需手动装。
+
+### 把本地图库迁移到 R2
+
+已有本地图片需要搬到 R2 时，用内置迁移脚本（可反复执行，幂等）：
+
+> ⚠️ **必须先停应用**。应用把 db.json 全量读入内存，任意一次 `save()` 都会把内存
+> 数据整体回写。若应用仍在运行，脚本改写完的 url 会被下一次保存覆盖回
+> `/uploads/...`，而且**不会有任何报错**。所以要用 `down` + `run` 一次性容器：
+> 注意不能用 `docker compose exec`（它要求容器正在运行）。
+
+```bash
+cd /opt/bili-dyn-publisher
+
+# 1) 先在 .env 填好 R2_* 凭据，STORAGE_DRIVER 暂留 local
+# 2) 停止应用（关键）
+docker compose down
+
+# 3) 预演：只报告要上传哪些文件、改写哪些 url，不写入任何内容
+docker compose run --rm --no-deps bili-dyn node scripts/migrate-to-r2.js --dry-run
+
+# 4) 正式执行（上传文件 + 备份并改写 db.json，含公网校验）
+docker compose run --rm --no-deps bili-dyn node scripts/migrate-to-r2.js --verify
+
+# 5) 把 .env 的 STORAGE_DRIVER 改为 r2，然后启动
+docker compose up -d
+```
+
+执行完第 4 步后请确认输出里 `改写 url` 的数量与预期一致，再走第 5 步。
+
+脚本行为说明：
+
+- **保留原 key**（如 `202609/xxx.jpg`），只把 db.json 里的 `url` 从 `/uploads/<key>`
+  改写为 `<R2_PUBLIC_BASE>/<key>`。发布链路用的是 `storage.get(key)`，key 不变则
+  调度与发布逻辑零改动；前端全部用 `img.url` 渲染，前端也无需改动。
+- 改写范围覆盖 `images[]` 与 `jobs[].images[]`（任务快照）两处。
+- 写入前自动备份 `db.json` 为 `db.json.bak-r2-<时间戳>`。
+- **本地文件不会被删除**，可随时回滚（把 `STORAGE_DRIVER` 改回 `local` 并还原
+  db.json 备份即可）。
+- 迁移过程中 `storage.get(key)` 在两种驱动下都能取到图，因此步骤 2 与步骤 4
+  之间服务始终可用。
+
+> 注意：步骤 3 之后、步骤 4 之前，`url` 已指向 R2 但新上传仍落在本地。
+> 这段时间新增的图片不受影响（本地也可读），切换驱动后即为纯 R2。
 
 ## 目录结构
 
