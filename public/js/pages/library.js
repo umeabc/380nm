@@ -96,6 +96,46 @@
     renderSelectionBar();
   }
 
+  /* ---------------- 存储空间 ---------------- */
+  function fmtBytes(b) {
+    if (b == null || isNaN(b)) return '—';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let v = b, i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return `${v >= 100 || i === 0 ? v.toFixed(0) : v.toFixed(1)} ${units[i]}`;
+  }
+  async function loadStorageUsage() {
+    let u = null;
+    try { u = (await api('GET', '/api/storage/usage')).usage; } catch (e) { u = null; }
+    const el = $('#storage-bar');
+    if (!u || !u.driver) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    if (u.driver === 'r2') {
+      const used = u.usedBytes || 0;
+      const total = u.totalBytes || 0;
+      const free = Math.max(0, total - used);
+      const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
+      const cls = pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : '';
+      const dot = pct >= 90 ? 'var(--red)' : pct >= 70 ? 'var(--amber)' : 'var(--green)';
+      el.innerHTML = `
+        <span class="sb-dot" style="background:${dot}"></span>
+        <span>存储剩余 <b>${fmtBytes(free)}</b><span class="hint"> · 已用 ${fmtBytes(used)} / ${fmtBytes(total)}</span></span>
+        <span class="sb-bar"><span class="sb-fill ${cls}" style="width:${pct}%"></span></span>
+        <span class="sb-meta">R2${u.objectCount != null ? ` · ${u.objectCount} 个对象` : ''}</span>`;
+    } else {
+      const used = u.usedBytes || 0;
+      const total = u.totalBytes || 0;
+      const free = u.freeBytes || 0;
+      const ratio = total > 0 ? free / total : 1;
+      const cls = ratio < 0.1 ? 'danger' : ratio < 0.3 ? 'warn' : '';
+      const dot = ratio < 0.1 ? 'var(--red)' : ratio < 0.3 ? 'var(--amber)' : 'var(--green)';
+      el.innerHTML = `
+        <span class="sb-dot" style="background:${dot}"></span>
+        <span>存储剩余 <b>${fmtBytes(free)}</b>${total ? `<span class="hint">（磁盘共 ${fmtBytes(total)}）</span>` : ''}<span class="hint"> · 图库占用 ${fmtBytes(used)}</span></span>
+        <span class="sb-meta">本地磁盘</span>`;
+    }
+  }
+
   /* ---------------- 移动 ---------------- */
   function closeMoveMenu() {
     $('#move-menu').style.display = 'none';
@@ -341,6 +381,8 @@
       });
       await Promise.all([loadImages(), loadFolders(), loadJobs()]);
       renderLibrary();
+      loadStorageUsage();
+      setInterval(loadStorageUsage, 30000);
 
       /* 上传 */
       const ldrop = $('#lib-drop'), lfi = $('#lib-file');

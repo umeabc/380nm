@@ -1,6 +1,11 @@
 const crypto = require('crypto');
 const path = require('path');
 
+// 用量统计缓存（ListObjectsV2 遍历整桶，对频繁刷新做节流）
+let usageCache = null;
+let usageCachedAt = 0;
+const USAGE_TTL_MS = 30000;
+
 const EXT_BY_TYPE = {
   'image/jpeg': '.jpg',
   'image/png': '.png',
@@ -77,6 +82,35 @@ class R2Storage {
   async delete(key) {
     const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
     await this.client.send(new DeleteObjectCommand({ Bucket: this.cfg.bucket, Key: key }));
+  }
+
+  /** 存储用量：遍历桶内对象求和；配额默认 10GB（R2 免费额度，可被 R2_QUOTA_GB 覆盖） */
+  async usage() {
+    if (usageCache && Date.now() - usageCachedAt < USAGE_TTL_MS) return usageCache;
+    const { ListObjectsV2Command } = require('@aws-sdk/client-s3');
+    let usedBytes = 0;
+    let objectCount = 0;
+    let token;
+    do {
+      const res = await this.client.send(
+        new ListObjectsV2Command({ Bucket: this.cfg.bucket, ContinuationToken: token })
+      );
+      for (const o of res.Contents || []) {
+        usedBytes += o.Size || 0;
+        objectCount++;
+      }
+      token = res.IsTruncated ? res.NextContinuationToken : undefined;
+    } while (token);
+    const quotaBytes = (this.cfg.quotaGb || 10) * 1024 ** 3;
+    usageCache = {
+      driver: 'r2',
+      usedBytes,
+      totalBytes: quotaBytes,
+      freeBytes: Math.max(0, quotaBytes - usedBytes),
+      objectCount
+    };
+    usageCachedAt = Date.now();
+    return usageCache;
   }
 }
 

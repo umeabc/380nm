@@ -1163,5 +1163,15 @@ module.exports = function createRoutes(ctx) {
     res.json({ logs: list });
   });
 
+  // ===================== 存储用量（图库页顶部展示） =====================
+  router.get('/storage/usage', requireAuth, async (req, res) => {
+    try {
+      const usage = await storage.usage();
+      res.json({ usage });
+    } catch (e) {
+      res.json({ usage: null, error: e.message });
+    }
+  });
+
   return router;
 };

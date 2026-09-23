@@ -91,6 +91,7 @@ docker compose up -d --build     # 更新代码后重建
 | `R2_SECRET_ACCESS_KEY` | — | R2 API Token 的 Secret |
 | `R2_BUCKET` | — | 存储桶名称 |
 | `R2_PUBLIC_BASE` | — | 公网访问前缀（r2.dev 或自定义域名），前端预览用 |
+| `R2_QUOTA_GB` | 10 | R2 存储配额（GB），仅用于图库页「存储剩余」展示 |
 
 > Docker 部署时请把凭据写在 `docker-compose.yml` 同目录的 `.env`（已 gitignore），
 > compose 会自动读取并注入。参考 `.env.example`。

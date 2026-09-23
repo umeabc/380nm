@@ -59,6 +59,38 @@ class LocalStorage {
       if (e.code !== 'ENOENT') throw e;
     }
   }
+
+  /** 存储用量：图库目录占用字节 + 所在磁盘总量/剩余（statfs，平台不支持时返回 0） */
+  async usage() {
+    let totalBytes = 0;
+    let freeBytes = 0;
+    try {
+      const st = await fsp.statfs(this.dir);
+      totalBytes = st.blocks * st.bsize;
+      freeBytes = st.bavail * st.bsize;
+    } catch (e) { /* 平台/路径不支持时留空 */ }
+    let usedBytes = 0;
+    try { usedBytes = await this._dirSize(this.dir); } catch (e) { /* ignore */ }
+    return { driver: 'local', usedBytes, totalBytes, freeBytes };
+  }
+
+  async _dirSize(dir) {
+    let total = 0;
+    let entries;
+    try {
+      entries = await fsp.readdir(dir, { withFileTypes: true });
+    } catch (e) {
+      return total;
+    }
+    for (const ent of entries) {
+      const p = path.join(dir, ent.name);
+      if (ent.isDirectory()) total += await this._dirSize(p);
+      else if (ent.isFile()) {
+        try { total += (await fsp.stat(p)).size; } catch (e) { /* ignore */ }
+      }
+    }
+    return total;
+  }
 }
 
 module.exports = { LocalStorage };

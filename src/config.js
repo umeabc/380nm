@@ -12,7 +12,9 @@ const config = {
       accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
       bucket: process.env.R2_BUCKET || '',
-      publicBase: process.env.R2_PUBLIC_BASE || ''
+      publicBase: process.env.R2_PUBLIC_BASE || '',
+      // R2 配额（免费额度 10GB），用于图库页展示「存储剩余」；按需用 R2_QUOTA_GB 覆盖
+      quotaGb: Number(process.env.R2_QUOTA_GB || 10)
     }
   },
   scheduler: {
