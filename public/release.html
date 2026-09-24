@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>发布动态 · 380nm</title>
-<link rel="stylesheet" href="/css/app.css?v=9">
+<link rel="stylesheet" href="/css/app.css?v=10">
 </head>
 <body>
 <div class="sidebar" id="sidebar"></div>
@@ -146,6 +146,9 @@
                   <button class="chip" type="button" data-preset="tomorrow20">明天 20:00</button>
                   <button class="chip" type="button" data-preset="1h">1小时后</button>
                   <button class="chip" type="button" data-preset="now">立即发布</button>
+                  <span class="preset-sep"></span>
+                  <button class="chip" type="button" data-shift="-1" title="在当前计划时间上往前 1 小时">− 1 小时</button>
+                  <button class="chip" type="button" data-shift="1" title="在当前计划时间上往后 1 小时">+ 1 小时</button>
                 </div>
               </div>
             </div>
@@ -156,7 +159,7 @@
             <div class="sum" id="composeSummary"></div>
           </div>
           <div class="card-foot">
-            <span class="foot-hint">提交后进入「发布队列」等待调度</span>
+            <span class="foot-hint">提交后进入「发布队列」等待调度 · 提交后停留在本页，可继续发布下一条</span>
             <span class="spacer"></span>
             <button class="btn primary" id="btn-submit">提交发布</button>
           </div>
@@ -166,7 +169,7 @@
   </main>
 </div>
 <div id="toast-wrap"></div>
-<script src="/js/common.js?v=9"></script>
-<script src="/js/pages/release.js?v=9"></script>
+<script src="/js/common.js?v=10"></script>
+<script src="/js/pages/release.js?v=10"></script>
 </body>
 </html>

@@ -155,15 +155,27 @@
     const tags = (j.tags || []).map((x) => `<span class="${tagCls(x)}">${esc(x)}</span>`).join('');
     const typeChip = j.type ? `<span class="tag-sm">${TYPE_LABEL[j.type] || esc(j.type)}</span>` : '';
     const err = j.lastError ? `<div class="q-err" title="${esc(j.lastError)}">${esc(snippet(j.lastError, 80))}</div>` : '';
+    const imgs = j.images || [];
+    // 配图预览：显示前 4 张缩略图（第 4 张叠加 +N），点击任意一张看全部
+    const thumbs = imgs.length
+      ? `<div class="t-imgs">${imgs.slice(0, 4).map((im, i) => `
+          <button class="t-thumb" type="button" data-preview="${j.id}" data-idx="${i}"
+                  title="预览配图（共 ${imgs.length} 张）">
+            <img referrerpolicy="no-referrer" src="${esc(im.url)}" alt="" loading="lazy">
+            ${i === 3 && imgs.length > 4 ? `<span class="t-more">+${imgs.length - 4}</span>` : ''}
+          </button>`).join('')}
+          <span class="t-imgs-n">共 ${imgs.length} 张</span>
+        </div>`
+      : '';
     return `<article class="task" data-edit="${j.id}">
       ${timeCell}
       <div>
         <div class="t-meta">${typeChip}${tags}<span class="t-target">${esc(j.accountName || '')}</span>${j.title ? `<span class="tag-sm">${esc(j.title)}</span>` : ''}</div>
-        <div class="t-body">${bodyHTML(j)}</div>${err}
+        <div class="t-body">${bodyHTML(j)}</div>${thumbs}${err}
       </div>
       <div class="t-side">
         <span class="pill ${j.status}">${(STATUSES.find((s) => s.k === j.status) || { label: j.status }).label}</span>
-        <button class="icon-btn" title="编辑任务" data-edit="${j.id}">${icon('pencil', 14)}</button>
+        <button class="icon-btn" title="编辑任务（直接进入编辑）" data-edit-direct="${j.id}">${icon('pencil', 14)}</button>
       </div>
     </article>`;
   }
@@ -238,6 +250,83 @@
     });
   }
 
+  /* ---------- 配图预览（第一张缩略图 → 点击查看全部） ---------- */
+  const pv = { images: [], idx: 0, job: null };
+  function ensurePvModal() {
+    let el = document.getElementById('pv-modal');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'pv-modal';
+    el.className = 'pv-modal';
+    el.style.display = 'none';
+    el.innerHTML = `<div class="pv-backdrop" data-pv-close="1"></div>
+      <div class="pv-body">
+        <div class="pv-head">
+          <span class="pv-title" id="pv-title"></span>
+          <button class="pv-x" type="button" data-pv-close="1" title="关闭（Esc）">&times;</button>
+        </div>
+        <div class="pv-main">
+          <button class="pv-nav prev" type="button" data-pv-nav="-1" title="上一张">&lsaquo;</button>
+          <a class="pv-imgwrap" id="pv-imgwrap" target="_blank" rel="noopener" title="在新标签打开原图">
+            <img id="pv-img" referrerpolicy="no-referrer" src="" alt="">
+          </a>
+          <button class="pv-nav next" type="button" data-pv-nav="1" title="下一张">&rsaquo;</button>
+        </div>
+        <div class="pv-thumbs" id="pv-thumbs"></div>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('[data-pv-close]')) { closePreview(); return; }
+      const nav = e.target.closest('[data-pv-nav]');
+      if (nav) { stepPreview(Number(nav.dataset.pvNav)); return; }
+      const t = e.target.closest('[data-pv-idx]');
+      if (t) { pv.idx = Number(t.dataset.pvIdx); paintPreview(); }
+    });
+    return el;
+  }
+  function openPreview(jobId, idx) {
+    const j = state.jobs.find((x) => x.id === jobId);
+    const imgs = (j && j.images) || [];
+    if (!imgs.length) { toast('该任务没有配图', 'warn'); return; }
+    pv.job = j;
+    pv.images = imgs.slice();
+    pv.idx = Math.max(0, Math.min(Number(idx) || 0, pv.images.length - 1));
+    ensurePvModal().style.display = '';
+    paintPreview();
+  }
+  function stepPreview(d) {
+    if (pv.images.length < 2) return;
+    pv.idx = (pv.idx + d + pv.images.length) % pv.images.length;
+    paintPreview();
+  }
+  function paintPreview() {
+    const im = pv.images[pv.idx];
+    if (!im) return;
+    const img = document.getElementById('pv-img');
+    img.src = im.url;
+    document.getElementById('pv-imgwrap').href = im.url;
+    const who = pv.job ? (pv.job.templateName || pv.job.accountName || '') : '';
+    document.getElementById('pv-title').textContent =
+      `${who ? who + ' · ' : ''}配图 ${pv.idx + 1} / ${pv.images.length}${im.name ? ' · ' + im.name : ''}`;
+    document.getElementById('pv-thumbs').innerHTML = pv.images.map((x, i) =>
+      `<button class="pv-thumb ${i === pv.idx ? 'on' : ''}" type="button" data-pv-idx="${i}" title="${esc(x.name || '')}">
+        <img referrerpolicy="no-referrer" src="${esc(x.url)}" alt="" loading="lazy">
+      </button>`).join('');
+  }
+  function closePreview() {
+    const el = document.getElementById('pv-modal');
+    if (el) el.style.display = 'none';
+    const img = document.getElementById('pv-img');
+    if (img) img.src = '';
+  }
+  document.addEventListener('keydown', (e) => {
+    const el = document.getElementById('pv-modal');
+    if (!el || el.style.display === 'none') return;
+    if (e.key === 'Escape') closePreview();
+    else if (e.key === 'ArrowLeft') stepPreview(-1);
+    else if (e.key === 'ArrowRight') stepPreview(1);
+  });
+
   App.boot({
     active: 'queue',
     title: '发布队列',
@@ -275,6 +364,12 @@
           renderList();
           return;
         }
+        // 配图缩略图 → 打开预览（缩略图位于任务卡内，须先于 [data-edit] 判定）
+        const pvb = e.target.closest('[data-preview]');
+        if (pvb) { openPreview(pvb.dataset.preview, pvb.dataset.idx); return; }
+        // 铅笔按钮 → 直接进入编辑；任务卡其他区域 → 仍进任务详情
+        const edd = e.target.closest('[data-edit-direct]');
+        if (edd) { location.href = '/queue/' + edd.dataset.editDirect + '?edit=1'; return; }
         const ed = e.target.closest('[data-edit]');
         if (ed) { location.href = '/queue/' + ed.dataset.edit; return; }
         if (e.target.closest('#clearFilter')) { clearFilters(); return; }

@@ -630,6 +630,44 @@
     else if (kind === 'now') { d.setTime(d.getTime() + 10 * 1000); }
     return d;
   }
+  /** 在当前已填的计划时间上前/后平移 N 小时（未填则以此刻为基准） */
+  function shiftTime(hours) {
+    const cur = $('#time-input').value;
+    let d = cur ? new Date(cur) : new Date();
+    if (isNaN(d.getTime())) d = new Date();
+    d.setTime(d.getTime() + hours * 3600 * 1000);
+    $('#time-input').value = toLocalInput(d);
+    toast(`计划时间已${hours > 0 ? '往后' : '往前'} ${Math.abs(hours)} 小时：` +
+      d.toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }), 'ok', 2000);
+  }
+  /** 提交成功后重置本次填写（保留账号与模板），便于不跳转连续发布 */
+  function resetAfterSubmit() {
+    state.selected = [];
+    state.topic = null;
+    state.atMentions = [];
+    state.people = { translator: null, typesetter: null };
+    state.vars = {};
+    if (activeTplId) state.varsByTpl[activeTplId] = {};
+    state.lastVarEl = null;
+    state.credit = { text: '', edited: false, work: null };
+    const title = $('#dyn-title');
+    if (title) title.value = '';
+    const tc = $('#titleCounter');
+    if (tc) { tc.textContent = '0 / 20 字'; tc.classList.remove('bad'); }
+    const ti = $('#time-input');
+    if (ti) ti.value = '';
+    const ci = $('#creditInput');
+    if (ci) ci.value = '';
+    clearFetch();
+    renderRecentTopics();
+    renderTopicChips();
+    renderAtChips();
+    renderPeople();
+    onTemplateChange(false);
+    renderSelected();
+    renderImageGrid();
+    renderSubmit();
+  }
   async function submitJob() {
     const errs = [];
     if (!$('#sel-account').value) errs.push({ t: '请先选择发布账号', sel: '#sel-account' });
@@ -669,9 +707,11 @@
         type: '原创',
         scheduledAt: when.toISOString()
       });
-      toast('已加入发布队列：' + tpl.name + ' · ' + state.selected.length + ' 张配图' +
-        (state.topic ? ' · #' + state.topic.name + '#' : ''), 'ok', 3200);
-      location.href = '/queue/' + r.job.id;
+      // 不跳转：提交后原地重置表单，便于连续发布下一条
+      const okText = '已加入发布队列：' + tpl.name + ' · ' + state.selected.length + ' 张配图' +
+        (state.topic ? ' · #' + state.topic.name + '#' : '');
+      resetAfterSubmit();
+      toast(okText + ' · 可继续发布下一条', 'ok', 3600);
     } catch (e) {
       toast(e.message, 'err', 3200);
     } finally {
@@ -774,7 +814,9 @@
       });
       $('#presets').addEventListener('click', (e) => {
         const b = e.target.closest('[data-preset]');
-        if (b) $('#time-input').value = toLocalInput(presetDate(b.dataset.preset));
+        if (b) { $('#time-input').value = toLocalInput(presetDate(b.dataset.preset)); return; }
+        const s = e.target.closest('[data-shift]');
+        if (s) shiftTime(Number(s.dataset.shift));
       });
       $('#recent-topics').addEventListener('click', (e) => {
         const p = e.target.closest('[data-rt]');
