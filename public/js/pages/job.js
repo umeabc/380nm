@@ -416,6 +416,20 @@
     if (state.jobEdit) renderEditForm(j);
     else renderDetail(j);
   }
+  /** 编辑模式所需数据（图库 / B站账号 / 标签类型 / 账号库） */
+  async function loadEditData() {
+    const [imgs, accs, meta, libAccs] = await Promise.all([
+      api('GET', '/api/images').catch(() => ({ images: [] })),
+      api('GET', '/api/accounts').catch(() => ({ accounts: [] })),
+      api('GET', '/api/tags').catch(() => ({ tags: [], types: ['翻嵌', '翻译', '转载', '原创'] })),
+      api('GET', '/api/lib-accounts').catch(() => ({ accounts: [] }))
+    ]);
+    state.images = imgs.images;
+    state.accounts = accs.accounts;
+    state.presetTags = meta.tags || [];
+    state.types = meta.types || [];
+    state.libAccounts = libAccs.accounts || [];
+  }
   async function jobAction(act) {
     try {
       if (act === 'del') {
@@ -437,17 +451,7 @@
         await renderPage(true);
       } else if (act === 'edit') {
         state.jobEdit = true;
-        const [imgs, accs, meta, libAccs] = await Promise.all([
-          api('GET', '/api/images').catch(() => ({ images: [] })),
-          api('GET', '/api/accounts').catch(() => ({ accounts: [] })),
-          api('GET', '/api/tags').catch(() => ({ tags: [], types: ['翻嵌', '翻译', '转载', '原创'] })),
-          api('GET', '/api/lib-accounts').catch(() => ({ accounts: [] }))
-        ]);
-        state.images = imgs.images;
-        state.accounts = accs.accounts;
-        state.presetTags = meta.tags || [];
-        state.types = meta.types || [];
-        state.libAccounts = libAccs.accounts || [];
+        await loadEditData();
         await renderPage(false);
       }
     } catch (e) {
@@ -464,6 +468,17 @@
         if (b) jobAction(b.dataset.jact);
       });
       await renderPage(true);
+      // 队列页铅笔按钮直达编辑：/queue/:id?edit=1
+      if (new URLSearchParams(location.search).get('edit') === '1') {
+        const j = state.jobs.find((x) => x.id === jobId);
+        if (j && j.status !== 'published' && j.status !== 'publishing') {
+          state.jobEdit = true;
+          await loadEditData();
+          await renderPage(false);
+        } else if (j) {
+          toast('该任务当前状态不可编辑', 'warn');
+        }
+      }
       setInterval(() => {
         if (!state.jobEdit) renderPage(true).catch(() => {});
       }, 5000);
