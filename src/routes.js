@@ -14,6 +14,8 @@ const upload = multer({
 
 const { importFromUrl, parseWork, ImportError } = require('./importers');
 const { buildZip } = require('./zip');
+const { cookieErrorText } = require('./cookie-monitor');
+const { mergeLibraryMentions } = require('./mentions');
 
 const MAX_IMAGES = 9;
 const MAX_IMPORT_IMAGES = 30;
@@ -279,12 +281,62 @@ module.exports = function createRoutes(ctx) {
       } catch (e) {
         return res.status(502).json({ error: '校验失败（无法连接B站）: ' + e.message });
       }
+      const checkedAt = new Date().toISOString();
       if (info.code !== 0) {
+        // 记录失败状态，账号一览会以红字展示具体报错
+        await store.updateAccount(acc.id, {
+          cookieStatus: { ok: false, code: Number(info.code) || null, message: cookieErrorText(info), checkedAt }
+        });
         return res.status(400).json({ error: `Cookie 可能已失效 (code ${info.code}): ${info.message || ''}` });
       }
       const d = info.data || {};
-      await store.updateAccount(acc.id, { uid: d.mid, uname: d.uname, avatar: d.face || '' });
+      await store.updateAccount(acc.id, {
+        uid: d.mid, uname: d.uname, avatar: d.face || '',
+        cookieStatus: { ok: true, code: 0, message: '', checkedAt }
+      });
       await store.addLog('info', `B站账号校验通过: ${d.uname}`, { userId: req.user.id });
+      res.json({ account: maskAccount(store.getAccount(acc.id)) });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // 修改 Cookie：先向B站校验，通过才覆盖，避免写坏数据
+  router.put('/accounts/:id/cookie', requireAuth, async (req, res, next) => {
+    try {
+      const acc = store.getAccount(req.params.id);
+      if (!acc || !canTouch(acc, req)) return res.status(404).json({ error: '账号不存在' });
+      const sessdata = String((req.body && req.body.sessdata) || '').trim();
+      const biliJct = String((req.body && req.body.bili_jct) || '').trim();
+      if (!sessdata || !biliJct) return res.status(400).json({ error: 'SESSDATA 和 bili_jct 均为必填' });
+
+      let info;
+      try {
+        info = await bili.getMyInfo(sessdata);
+      } catch (e) {
+        return res.status(502).json({ error: '校验失败（无法连接B站）: ' + e.message });
+      }
+      const checkedAt = new Date().toISOString();
+      if (info.code !== 0) {
+        await store.updateAccount(acc.id, {
+          cookieStatus: { ok: false, code: Number(info.code) || null, message: cookieErrorText(info), checkedAt }
+        });
+        return res.status(400).json({ error: `新 Cookie 无效 (code ${info.code}): ${info.message || ''}` });
+      }
+
+      const d = info.data || {};
+      const patch = {
+        sessdata,
+        bili_jct: biliJct,
+        uid: d.mid,
+        uname: d.uname,
+        avatar: d.face || '',
+        cookieStatus: { ok: true, code: 0, message: '', checkedAt }
+      };
+      const name = String((req.body && req.body.name) || '').trim();
+      if (name) patch.name = name;
+      await store.updateAccount(acc.id, patch);
+      await store.addLog('info', `B站账号「${d.uname}」Cookie 已更新并校验通过`, { userId: req.user.id });
       res.json({ account: maskAccount(store.getAccount(acc.id)) });
     } catch (e) {
       next(e);
@@ -973,6 +1025,8 @@ module.exports = function createRoutes(ctx) {
       } catch (e) {
         return res.status(e.status || 500).json({ error: e.message });
       }
+      // 正文里 @到账号库成员的，补登记为提及（模板变量/人员槽位渲染出的 @ 不会自己进 mentions）
+      mentions = mergeLibraryMentions(text, store.listLibAccounts(), mentions, req.user.id);
 
       // 标签 / 内容类型 / 署名槽位（PRD F-Q1/Q5/Q6）
       const tags = validateTags(req.body.tags);
@@ -1087,6 +1141,13 @@ module.exports = function createRoutes(ctx) {
         patch.type = newType;
         patch.slots = s.slots;
       }
+      // 正文 @到账号库成员时自动登记为提及，修复「编辑后 @ 失效」（老数据保存一次即被修复）
+      patch.mentions = mergeLibraryMentions(
+        patch.text !== undefined ? patch.text : job.text,
+        store.listLibAccounts(),
+        patch.mentions !== undefined ? patch.mentions : (job.mentions || []),
+        job.userId
+      );
       patch.status = 'pending';
       patch.lastError = null;
       await store.updateJob(job.id, patch);
