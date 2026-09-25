@@ -22,6 +22,27 @@
   }
   const jobId = decodeURIComponent(location.pathname.split('/')[2] || '');
 
+  /**
+   * 与后端 mergeLibraryMentions 同逻辑：正文里 @到「账号库」成员的，补齐为提及。
+   * 模板变量 / 人员槽位渲染出的 @handle 不会自己进 mentions，导致编辑页看不到、发布时不可点击。
+   * 作者署名里的 X handle 不在账号库中，不会被误判。
+   */
+  function mergeLibraryMentions(text, libAccounts, list) {
+    const handles = (libAccounts || [])
+      .filter((a) => a.handle && a.uid)
+      .map((a) => ({ handle: String(a.handle), uid: String(a.uid) }));
+    if (!handles.length) return;
+    const re = /@([A-Za-z0-9_一-龥-]{1,30})/g;
+    let m;
+    while ((m = re.exec(String(text || '')))) {
+      const token = m[1];
+      const hit = handles.find((h) => h.handle.toLowerCase() === token.toLowerCase());
+      if (!hit) continue;
+      if (list.some((x) => String(x.uid) === hit.uid)) continue;
+      list.push({ name: token, uid: hit.uid });
+    }
+  }
+
   function ownerName(j) {
     if (!(App.state.user && App.state.user.role === 'admin')) return '';
     const u = state.users.find((x) => x.id === j.userId);
@@ -165,6 +186,8 @@
     state.modalImages = (j.images || []).slice();
     state.editTopic = j.topic || null;
     state.editMentions = (j.mentions || []).slice();
+    // 补上正文里 @到账号库成员、但历史数据未登记的提及
+    mergeLibraryMentions(j.text, state.libAccounts, state.editMentions);
     state.editType = j.type || '原创';
     state.editSlots = {};
     for (const k of ['trans', 'typo', 'orig']) {

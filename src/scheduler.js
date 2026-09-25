@@ -1,4 +1,5 @@
 const { slotSegment } = require('./templates');
+const { mergeLibraryMentions } = require('./mentions');
 
 class Scheduler {
   constructor({ store, storage, bili, config }) {
@@ -67,8 +68,12 @@ class Scheduler {
       // 署名片段（PRD F-Q5）：按内容类型追加【翻&嵌 @xx @xx 原作X@xx】等
       const seg = slotSegment(job.type || '原创', job.slots || {});
       const publishText = seg ? `${job.text}\n\n${seg}` : job.text;
-      // @提及 = 手动提及 + 槽位中带 B站 uid 的账号（渲染为可点击用户链接）
-      const mentions = [...(job.mentions || [])];
+      // @提及 = 手动提及 + 正文里命中账号库的 @ + 槽位中带 B站 uid 的账号
+      // （正文兜底放在发布时，可覆盖「重新入队」「历史数据」等未经过保存流程的任务，
+      //   否则这些任务的 @ 会退化成不可点击的纯文本）
+      const mentions = mergeLibraryMentions(
+        publishText, this.store.listLibAccounts(), job.mentions || [], job.userId
+      );
       for (const k of Object.keys(job.slots || {})) {
         const s = job.slots[k];
         if (s && s.handle && s.uid) {

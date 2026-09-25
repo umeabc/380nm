@@ -21,6 +21,12 @@ const config = {
     intervalMs: Number(process.env.SCHEDULER_INTERVAL || 20000),
     maxAttempts: Number(process.env.MAX_ATTEMPTS || 3),
     retryDelayMs: Number(process.env.RETRY_DELAY_MS || 60000)
+  },
+  // 账号 Cookie 巡检（账号管理页展示正常/异常）
+  cookieMonitor: {
+    intervalMs: Number(process.env.COOKIE_CHECK_INTERVAL || 30 * 60 * 1000),
+    startupDelayMs: Number(process.env.COOKIE_CHECK_STARTUP_DELAY || 8000),
+    gapMs: Number(process.env.COOKIE_CHECK_GAP || 1500)
   }
 };
 

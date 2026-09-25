@@ -5,6 +5,7 @@ const { createStore } = require('./src/store');
 const { createStorage } = require('./src/storage');
 const { BilibiliClient } = require('./src/bilibili');
 const { Scheduler } = require('./src/scheduler');
+const { CookieMonitor } = require('./src/cookie-monitor');
 const createRoutes = require('./src/routes');
 
 async function main() {
@@ -40,7 +41,8 @@ async function main() {
   app.use(express.static(path.join(__dirname, 'public')));
 
   const scheduler = new Scheduler({ store, storage, bili, config: config.scheduler });
-  app.use('/api', createRoutes({ store, storage, bili, scheduler }));
+  const cookieMonitor = new CookieMonitor({ store, bili, config: config.cookieMonitor });
+  app.use('/api', createRoutes({ store, storage, bili, scheduler, cookieMonitor }));
 
   app.use((err, req, res, next) => {
     console.error('[http]', err);
@@ -48,6 +50,7 @@ async function main() {
   });
 
   scheduler.start();
+  cookieMonitor.start();
 
   const server = app.listen(config.port, config.host, () => {
     console.log('==================================================');
@@ -62,6 +65,7 @@ async function main() {
   const shutdown = async () => {
     console.log('\n正在退出...');
     scheduler.stop();
+    cookieMonitor.stop();
     server.close();
     try {
       await store.flushNow();
