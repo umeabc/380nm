@@ -107,6 +107,178 @@ window.App = (function () {
     setTimeout(() => el.remove(), 3000);
   }
 
+  /* ---------------- 图片上传（进度弹窗，发布页/图库共用） ---------------- */
+  // 与后端 multer limits 保持一致（见 src/routes.js 的 upload 配置）
+  const UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
+  // 是否有上传弹窗在生命周期内（关闭后弹窗还要淡出 160ms，不能用 DOM 存在性判断）
+  let upBusy = false;
+
+  /** 单张上传：用 XHR 才能拿到 upload.onprogress（fetch 无上传进度） */
+  function uploadOne(file, folderId, onProgress) {
+    return new Promise((resolve, reject) => {
+      const fd = new FormData();
+      fd.append('files', file);
+      if (folderId) fd.append('folderId', folderId);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/upload');
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && e.total) onProgress(e.loaded / e.total);
+      };
+      xhr.onload = () => {
+        if (xhr.status === 401) {
+          location.replace('/login?next=' + encodeURIComponent(location.pathname + location.search));
+          reject(new Error('登录已过期，请重新登录'));
+          return;
+        }
+        let data = null;
+        try { data = JSON.parse(xhr.responseText); } catch (e) { /* ignore */ }
+        if (xhr.status >= 200 && xhr.status < 300 && data && data.images && data.images.length) {
+          resolve(data.images[0]);
+        } else {
+          reject(new Error((data && data.error) || ('HTTP ' + xhr.status)));
+        }
+      };
+      xhr.onerror = () => reject(new Error('网络错误'));
+      xhr.ontimeout = () => reject(new Error('上传超时'));
+      xhr.timeout = 120000;
+      xhr.send(fd);
+    });
+  }
+
+  /**
+   * 逐张上传图片，弹窗展示每张进度。全部成功后自动关闭弹窗；
+   * 有失败项时弹窗保留，可「重试失败项」或手动关闭。
+   * Promise 在弹窗关闭时才 resolve —— 即调用方的后续刷新发生在用户看完结果之后。
+   * @returns {Promise<{images:Array, failed:Array, skipped:Array}>}
+   */
+  function uploadImages(files, opts) {
+    const list = Array.from(files || []);
+    const folderId = (opts && opts.folderId) || null;
+    if (!list.length) return Promise.resolve({ images: [], failed: [], skipped: [] });
+    if (upBusy) { toast('已有一个上传任务在进行中', 'warn'); return Promise.resolve({ images: [], failed: [], skipped: [] }); }
+    upBusy = true;
+
+    const rows = list.map((file) => {
+      const r = { file, state: 'wait', pct: 0, reason: '', image: null };
+      // 后端只收图片，且单张上限 20MB：先在本地判掉，避免白传一趟
+      if (!/^image\//.test(String(file.type || ''))) { r.state = 'skip'; r.reason = '非图片，跳过'; }
+      else if (file.size > UPLOAD_MAX_BYTES) { r.state = 'fail'; r.reason = '超过 20MB'; }
+      return r;
+    });
+
+    return new Promise((resolve) => {
+      const mask = document.createElement('div');
+      mask.className = 'mask';
+      mask.id = 'up-mask';
+      mask.innerHTML =
+        `<div class="modal">
+          <div class="modal-head">
+            <div class="modal-title">上传图片</div>
+            <div class="up-count" id="up-count"></div>
+          </div>
+          <div class="modal-body">
+            <div class="up-list" id="up-list">` +
+            rows.map((r, i) => `<div class="up-row" data-r="${i}">
+              <div class="up-name" title="${esc(r.file.name)}">${esc(r.file.name)}</div>
+              <div class="up-bar"><i></i></div>
+              <div class="up-st">等待</div>
+            </div>`).join('') +
+          `</div>
+          </div>
+          <div class="modal-foot">
+            <span class="up-hint" id="up-hint"></span>
+            <span class="spacer"></span>
+            <button class="btn" id="up-retry" style="display:none">重试失败项</button>
+            <button class="btn primary" id="up-ok" disabled>上传中…</button>
+          </div>
+        </div>`;
+      document.body.appendChild(mask);
+      requestAnimationFrame(() => mask.classList.add('show'));
+
+      const els = rows.map((r, i) => {
+        const row = mask.querySelector(`.up-row[data-r="${i}"]`);
+        return { row, bar: row.querySelector('.up-bar i'), st: row.querySelector('.up-st') };
+      });
+      let uploading = true;
+      let closed = false;
+      let autoTimer = null;
+
+      const STATE_CLS = { up: ' up', done: ' done', fail: ' fail', skip: ' skip' };
+      function paintRow(i) {
+        const r = rows[i], e = els[i];
+        const pct = r.state === 'done' ? 100 : Math.round(r.pct * 100);
+        e.row.className = 'up-row' + (STATE_CLS[r.state] || '');
+        e.bar.style.width = pct + '%';
+        e.st.textContent = r.state === 'done' ? '完成'
+          : r.state === 'fail' ? (r.reason || '失败')
+            : r.state === 'skip' ? (r.reason || '跳过')
+              : r.state === 'up' ? pct + '%' : '等待';
+      }
+      function countBy(s) { return rows.filter((r) => r.state === s).length; }
+      function paintHead() {
+        const done = countBy('done'), bad = countBy('fail');
+        $('#up-count').textContent = done + '/' + rows.length;
+        $('#up-ok').disabled = uploading;
+        $('#up-ok').textContent = uploading ? '上传中…' : '关闭';
+        $('#up-retry').style.display = (!uploading && bad) ? '' : 'none';
+        $('#up-hint').textContent = uploading
+          ? `正在上传 ${done + bad}/${rows.length}…`
+          : bad ? `${bad} 张上传失败，可重试或关闭`
+            : done ? `全部上传完成（${done} 张）`
+              : '没有可上传的图片';
+      }
+      function onKey(e) { if (e.key === 'Escape' && !uploading) close(); }
+      function close() {
+        if (closed) return;
+        closed = true;
+        upBusy = false;
+        clearTimeout(autoTimer);
+        document.removeEventListener('keydown', onKey);
+        mask.classList.remove('show');
+        setTimeout(() => mask.remove(), 160);
+        resolve({
+          images: rows.filter((r) => r.state === 'done').map((r) => r.image),
+          failed: rows.filter((r) => r.state === 'fail').map((r) => ({ file: r.file, error: r.reason })),
+          skipped: rows.filter((r) => r.state === 'skip').map((r) => ({ file: r.file, reason: r.reason }))
+        });
+      }
+      async function runQueue() {
+        uploading = true;
+        paintHead();
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          if (r.state !== 'wait') continue;
+          r.state = 'up'; r.pct = 0;
+          paintRow(i); paintHead();
+          try {
+            r.image = await uploadOne(r.file, folderId, (p) => { r.pct = p; paintRow(i); });
+            r.state = 'done'; r.pct = 1;
+          } catch (e) {
+            r.state = 'fail'; r.reason = e.message;
+          }
+          paintRow(i); paintHead();
+        }
+        uploading = false;
+        paintHead();
+        // 全部成功 → 停留一下让用户看到 100% 后自动关闭；
+        // 有失败项、或一张都没传成（全被跳过）时留在弹窗里让用户看清原因
+        if (!countBy('fail') && countBy('done')) autoTimer = setTimeout(close, 520);
+      }
+
+      rows.forEach((r, i) => paintRow(i));
+      paintHead();
+      $('#up-ok').addEventListener('click', () => { if (!uploading) close(); });
+      $('#up-retry').addEventListener('click', () => {
+        if (uploading) return;
+        rows.forEach((r, i) => { if (r.state === 'fail') { r.state = 'wait'; r.reason = ''; r.pct = 0; paintRow(i); } });
+        runQueue();
+      });
+      mask.addEventListener('click', (e) => { if (e.target === mask && !uploading) close(); });
+      document.addEventListener('keydown', onKey);
+      runQueue();
+    });
+  }
+
   /* ---------------- 状态 ---------------- */
   const state = {
     user: null,
@@ -331,6 +503,6 @@ window.App = (function () {
   return {
     $, $$, icon, esc, pad, fmtTime, fmtShort, toLocalInput, fmtDuration, snippet, renderText, debounce,
     api, toast, state, NAV, renderShell, refreshBadge, closeDrawer, openPwModal,
-    publishedImageMap, pubTip, pendingImageMap, pendTip, boot
+    publishedImageMap, pubTip, pendingImageMap, pendTip, uploadImages, boot
   };
 })();

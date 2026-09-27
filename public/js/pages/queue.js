@@ -174,7 +174,8 @@
     </article>`;
   }
   function renderList() {
-    const list = visible().slice().sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
+    // 默认按时间倒序（最近的排在最前）
+    const list = visible().slice().sort((a, b) => new Date(b.scheduledAt) - new Date(a.scheduledAt));
     const box = $('#list');
     if (!list.length) {
       const label = state.status === 'all' ? '' : (STATUSES.find((s) => s.k === state.status) || {}).label;
