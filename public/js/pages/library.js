@@ -423,19 +423,18 @@
 
       /* 上传 */
       const ldrop = $('#lib-drop'), lfi = $('#lib-file');
-      const doUpload = (files, folderId) => {
-        const fd = new FormData();
-        for (const f of files) fd.append('files', f);
-        if (folderId) fd.append('folderId', folderId);
-        fetch('/api/upload', { method: 'POST', body: fd })
-          .then(async (r) => {
-            const data = await r.json().catch(() => ({}));
-            if (!r.ok) throw new Error(data.error || '上传失败');
-            await Promise.all([loadImages(), loadFolders()]);
-            renderLibrary();
-            toast(`已上传 ${data.images.length} 张图片${folderId ? '到当前文件夹' : ''}`, 'success');
-          })
-          .catch((e) => toast(e.message, 'error'));
+      const doUpload = async (files, folderId) => {
+        try {
+          // 上传过程由 App.uploadImages 的进度弹窗接管，全部成功后才自动关闭
+          const res = await App.uploadImages(files, { folderId });
+          if (!res.images.length) return;
+          await Promise.all([loadImages(), loadFolders()]);
+          renderLibrary();
+          loadStorageUsage();
+          toast(`已上传 ${res.images.length} 张图片${folderId ? '到当前文件夹' : ''}`, 'success');
+        } catch (e) {
+          toast(e.message, 'error');
+        }
       };
       ldrop.addEventListener('click', () => lfi.click());
       lfi.addEventListener('change', () => {
