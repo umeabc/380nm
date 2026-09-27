@@ -10,8 +10,8 @@
   const SLOT_ORDER = { '翻嵌': ['trans', 'typo', 'orig'], '翻译': ['trans', 'orig'], '转载': ['orig'], '原创': [] };
 
   const state = {
-    jobs: [], libAccounts: [], presetTags: [], types: [],
-    status: 'all', tags: [], target: 'all', type: 'all', date: 'all',
+    jobs: [], libAccounts: [], types: [],
+    status: 'all', template: 'all', target: 'all', type: 'all', date: 'all',
     group: 'target', collapsed: {}, q: ''
   };
   const scopeQ = () => App.state.user && App.state.user.role === 'admin' && App.state.scopeAll ? '?scope=all' : '';
@@ -54,10 +54,6 @@
     if (Math.abs(diff) <= 7) return 'week';
     return 'older';
   }
-  function tagCls(t) {
-    const i = state.presetTags.indexOf(t);
-    return 'tag-sm c' + (i >= 0 ? (i % 4) : 0);
-  }
   function slotSegmentHTML(j) {
     const type = j.type || '原创';
     const need = SLOT_ORDER[type] || [];
@@ -78,9 +74,9 @@
   }
 
   /* ---------- 筛选 ---------- */
-  function baseFiltered(noTags) {
+  function baseFiltered() {
     return state.jobs.filter((j) =>
-      (noTags || state.tags.length === 0 || state.tags.every((x) => (j.tags || []).includes(x))) &&
+      (state.template === 'all' || (j.templateName || '') === state.template) &&
       (state.target === 'all' || j.accountName === state.target) &&
       (state.type === 'all' || (j.type || '原创') === state.type) &&
       (state.date === 'all' || dateBucket(j) === state.date) &&
@@ -92,6 +88,10 @@
   }
   function targetOptions() {
     const set = new Set(state.jobs.map((j) => j.accountName).filter(Boolean));
+    return [...set];
+  }
+  function templateOptions() {
+    const set = new Set(state.jobs.map((j) => j.templateName).filter(Boolean));
     return [...set];
   }
 
@@ -122,19 +122,13 @@
     }).join('');
   }
   function renderFilterBar() {
-    const tagChips = state.presetTags.map((t) => {
-      const on = state.tags.includes(t);
-      const n = baseFiltered(true).filter((j) => (j.tags || []).includes(t)).length;
-      return `<button class="chip ${on ? 'on' : ''}" data-tag="${esc(t)}">${esc(t)}<span class="cnt">${n}</span></button>`;
-    }).join(' ');
     const sel = (id, cur, opts) => `<select class="ctl" data-sel="${id}">${opts.map((o) => `<option value="${esc(o.v)}" ${cur === o.v ? 'selected' : ''}>${esc(o.t)}</option>`).join('')}</select>`;
     const targets = targetOptions();
+    const templates = templateOptions();
     $('#filterbar').innerHTML = `
       <span class="fb-label">筛选条件 <span class="new-badge">新增</span></span>
       <span class="fb-sep"></span>
-      <span class="fb-label">标签</span>
-      ${tagChips}
-      <span class="fb-sep"></span>
+      ${sel('template', state.template, [{ v: 'all', t: '模板：全部' }].concat(templates.map((t) => ({ v: t, t }))))}
       ${sel('target', state.target, [{ v: 'all', t: '目标：全部' }].concat(targets.map((t) => ({ v: t, t }))))}
       ${sel('type', state.type, [{ v: 'all', t: '类型：全部' }].concat(state.types.map((t) => ({ v: t, t: TYPE_LABEL[t] || t }))))}
       ${sel('date', state.date, [{ v: 'all', t: '日期：全部' }, { v: 'today', t: '今天' }, { v: 'tomorrow', t: '明天' }, { v: 'week', t: '近 7 天' }, { v: 'older', t: '更早' }])}
@@ -152,8 +146,8 @@
              <div class="t-cd"><span class="t-lb">倒计时</span> <span class="cd" data-at="${j.scheduledAt}">${cdText(new Date(j.scheduledAt).getTime() - Date.now())}</span></div>
            </div>`
         : `<div class="t-time"><div class="t-line"><span class="t-lb">计划</span><b>${fmtPlan(j.scheduledAt)}</b></div></div>`;
-    const tags = (j.tags || []).map((x) => `<span class="${tagCls(x)}">${esc(x)}</span>`).join('');
     const typeChip = j.type ? `<span class="tag-sm">${TYPE_LABEL[j.type] || esc(j.type)}</span>` : '';
+    const tplChip = j.templateName ? `<span class="tag-sm">${esc(j.templateName)}</span>` : '';
     const err = j.lastError ? `<div class="q-err" title="${esc(j.lastError)}">${esc(snippet(j.lastError, 80))}</div>` : '';
     const imgs = j.images || [];
     // 配图预览：显示前 4 张缩略图（第 4 张叠加 +N），点击任意一张看全部
@@ -170,7 +164,7 @@
     return `<article class="task" data-edit="${j.id}">
       ${timeCell}
       <div>
-        <div class="t-meta">${typeChip}${tags}<span class="t-target">${esc(j.accountName || '')}</span>${j.title ? `<span class="tag-sm">${esc(j.title)}</span>` : ''}</div>
+        <div class="t-meta">${typeChip}${tplChip}<span class="t-target">${esc(j.accountName || '')}</span>${j.title ? `<span class="tag-sm">${esc(j.title)}</span>` : ''}</div>
         <div class="t-body">${bodyHTML(j)}</div>${thumbs}${err}
       </div>
       <div class="t-side">
@@ -202,7 +196,7 @@
       list.forEach((j) => {
         const key = state.group === 'target'
           ? (j.accountName || '未指定目标')
-          : ((j.tags || [])[0] || '未分类');
+          : (j.templateName || '未指定模板');
         (groups[key] = groups[key] || []).push(j);
       });
       const keys = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
@@ -228,7 +222,7 @@
 
   /* ---------- 交互 ---------- */
   function clearFilters() {
-    state.tags = []; state.target = 'all'; state.type = 'all'; state.date = 'all'; state.status = 'all'; state.q = '';
+    state.template = 'all'; state.target = 'all'; state.type = 'all'; state.date = 'all'; state.status = 'all'; state.q = '';
     renderAll();
     toast('已清除全部筛选条件', 'warn');
   }
@@ -332,7 +326,6 @@
     title: '发布队列',
     ready: async () => {
       const meta = await api('GET', '/api/tags');
-      state.presetTags = meta.tags || [];
       state.types = meta.types || [];
       try { state.libAccounts = (await api('GET', '/api/lib-accounts' + scopeQ())).accounts; } catch (e) { /* ignore */ }
       await refresh();
@@ -342,14 +335,6 @@
       document.addEventListener('click', (e) => {
         const tab = e.target.closest('.tab[data-status]');
         if (tab) { state.status = tab.dataset.status; renderTabs(); renderList(); return; }
-        const chip = e.target.closest('.chip[data-tag]');
-        if (chip) {
-          const t = chip.dataset.tag;
-          const i = state.tags.indexOf(t);
-          if (i >= 0) state.tags.splice(i, 1); else state.tags.push(t);
-          renderTabs(); renderFilterBar(); renderList();
-          return;
-        }
         const head = e.target.closest('.group-head');
         if (head) {
           const k = head.dataset.toggle;

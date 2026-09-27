@@ -621,12 +621,18 @@
     el.classList.add('err');
     setTimeout(() => el.classList.remove('err'), 1700);
   }
+  /** 快捷时间：today1000 / tomorrow1500 这类「日+时刻」预设统一按 HHMM 解析 */
   function presetDate(kind) {
     const d = new Date();
-    if (kind === 'today20') { d.setHours(20, 0, 0, 0); if (d <= new Date()) d.setDate(d.getDate() + 1); }
-    else if (kind === 'tomorrow8') { d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0); }
-    else if (kind === 'tomorrow20') { d.setDate(d.getDate() + 1); d.setHours(20, 0, 0, 0); }
-    else if (kind === '1h') { d.setTime(d.getTime() + 3600 * 1000); }
+    const m = /^(today|tomorrow)(\d{2})(\d{2})$/.exec(String(kind));
+    if (m) {
+      if (m[1] === 'tomorrow') d.setDate(d.getDate() + 1);
+      d.setHours(Number(m[2]), Number(m[3]), 0, 0);
+      // 「今天 xx:xx」若已过点则顺延到明天（与「计划时间不能早于当前」一致）
+      if (m[1] === 'today' && d <= new Date()) d.setDate(d.getDate() + 1);
+      return d;
+    }
+    if (kind === '1h') { d.setTime(d.getTime() + 3600 * 1000); }
     else if (kind === 'now') { d.setTime(d.getTime() + 10 * 1000); }
     return d;
   }
@@ -703,7 +709,6 @@
         topic: state.topic,
         title,
         mentions: collectMentions(),
-        tags: ['日常'],
         type: '原创',
         scheduledAt: when.toISOString()
       });

@@ -188,6 +188,9 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 .chip .cnt{font-size:11px;color:var(--text-3);font-variant-numeric:tabular-nums}
 .chip.on .cnt{color:var(--primary);opacity:.7}
 .chips{display:flex;gap:7px;flex-wrap:wrap;min-height:24px}
+/* 图库「发布情况」筛选条 */
+.lib-pubfilter{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:14px}
+.lib-pubfilter .fb-label{font-size:12px;color:var(--text-3)}
 .sample-row{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
 .fb-label{font-size:12px;color:var(--text-3);display:inline-flex;align-items:center;gap:6px}
 

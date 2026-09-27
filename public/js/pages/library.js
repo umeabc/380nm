@@ -3,9 +3,16 @@
   const { $, $$, icon, esc, api, toast, fmtTime, publishedImageMap, pubTip, pendingImageMap, pendTip } = App;
   const state = {
     images: [], folders: [], jobs: [],
-    libFolder: 'all', moveKeys: [],
+    libFolder: 'all', pubFilter: 'all', moveKeys: [],
     selectedKeys: new Set()
   };
+  // 发布情况筛选：已发布 / 待发布 / 未发布（既没发布过也没被待发布任务引用）
+  const PUB_FILTERS = [
+    { k: 'all', label: '全部' },
+    { k: 'published', label: '已发布' },
+    { k: 'pending', label: '待发布' },
+    { k: 'none', label: '未发布' }
+  ];
   let marquee = null;
   const scopeQ = () => App.state.user && App.state.user.role === 'admin' && App.state.scopeAll ? '?scope=all' : '';
   const isAdminAll = () => App.state.user && App.state.user.role === 'admin' && App.state.scopeAll;
@@ -35,10 +42,39 @@
   }
 
   /* ---------------- 视图过滤 / 选择 ---------------- */
-  function viewImages() {
+  /** 仅按文件夹过滤（不含发布情况筛选） */
+  function folderFiltered() {
     if (isAdminAll()) return state.images;
     return state.images.filter((i) =>
       state.libFolder === 'all' ? true : state.libFolder === 'none' ? !i.folderId : i.folderId === state.libFolder);
+  }
+  function viewImages() {
+    const base = folderFiltered();
+    if (state.pubFilter === 'all') return base;
+    const pub = publishedImageMap(state.jobs);
+    const pend = pendingImageMap(state.jobs);
+    return base.filter((i) => {
+      const p = !!pub[i.key];
+      const q = !!pend[i.key];
+      if (state.pubFilter === 'published') return p;
+      if (state.pubFilter === 'pending') return q;
+      return !p && !q; // 未发布
+    });
+  }
+  /** 发布情况筛选条（带各状态数量） */
+  function renderPubFilter(pub, pend) {
+    const base = folderFiltered();
+    const cnt = {
+      all: base.length,
+      published: base.filter((i) => pub[i.key]).length,
+      pending: base.filter((i) => pend[i.key]).length,
+      none: base.filter((i) => !pub[i.key] && !pend[i.key]).length
+    };
+    $('#lib-pubfilter').innerHTML =
+      '<span class="fb-label">发布情况</span>' +
+      PUB_FILTERS.map((f) =>
+        `<button class="chip ${state.pubFilter === f.k ? 'on' : ''}" data-pubfilter="${f.k}">${f.label}<span class="cnt">${cnt[f.k]}</span></button>`
+      ).join('');
   }
   function pruneSelection() {
     const alive = new Set(state.images.map((i) => i.key));
@@ -70,9 +106,10 @@
 
   /* ---------------- 列表渲染 ---------------- */
   function renderLibrary() {
-    renderFolderList();
     const pubMap = publishedImageMap(state.jobs);
     const pendMap = pendingImageMap(state.jobs);
+    renderFolderList();
+    renderPubFilter(pubMap, pendMap);
     const items = viewImages();
     const pubCount = items.filter((i) => pubMap[i.key]).length;
     const pendCount = items.filter((i) => pendMap[i.key]).length;
@@ -463,6 +500,12 @@
         }
       });
       $('#btn-folder-new').addEventListener('click', createFolder);
+      $('#lib-pubfilter').addEventListener('click', (e) => {
+        const b = e.target.closest('[data-pubfilter]');
+        if (!b) return;
+        state.pubFilter = b.dataset.pubfilter;
+        renderLibrary();
+      });
       $('#scope-lib').addEventListener('change', async (e) => {
         App.state.scopeAll = e.target.checked;
         state.libFolder = 'all';

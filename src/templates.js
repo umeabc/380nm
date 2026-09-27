@@ -1,6 +1,3 @@
-/** 内置标签集合（PRD F-Q1：0~3 个，当前内置；后续可改为后台配置） */
-const PRESET_TAGS = ['日常', '翻译', '嵌字', '活动', '公告'];
-
 /** 内置内容类型（PRD F-Q5） */
 const TASK_TYPES = ['翻嵌', '翻译', '转载', '原创'];
 
@@ -80,4 +77,4 @@ function DEFAULT_TEMPLATES() {
   ];
 }
 
-module.exports = { DEFAULT_TEMPLATES, PRESET_TAGS, TASK_TYPES, TYPE_SLOTS, SLOT_LABELS, slotSegment };
+module.exports = { DEFAULT_TEMPLATES, TASK_TYPES, TYPE_SLOTS, SLOT_LABELS, slotSegment };
