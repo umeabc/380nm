@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const { genId, sanitizeUser } = require('./store');
 const { renderTemplate } = require('./render');
-const { PRESET_TAGS, TASK_TYPES, TYPE_SLOTS, SLOT_LABELS, slotSegment } = require('./templates');
+const { TASK_TYPES, TYPE_SLOTS, SLOT_LABELS, slotSegment } = require('./templates');
 const {
   hashPassword, verifyPassword, attachUser, requireAuth, requireAdmin
 } = require('./auth');
@@ -785,9 +785,10 @@ module.exports = function createRoutes(ctx) {
     }
   });
 
-  // ===================== 预设标签 / 内容类型 =====================
+  // ===================== 元数据：内容类型 / 署名槽位 =====================
+  // 标签（TAG）功能已下线：任务改用「模板」区分，不再有标签维度
   router.get('/tags', requireAuth, (req, res) => {
-    res.json({ tags: PRESET_TAGS, types: TASK_TYPES, typeSlots: TYPE_SLOTS, slotLabels: SLOT_LABELS });
+    res.json({ types: TASK_TYPES, typeSlots: TYPE_SLOTS, slotLabels: SLOT_LABELS });
   });
 
   // ===================== 账号库（署名成员目录，不区分角色） =====================
@@ -849,7 +850,7 @@ module.exports = function createRoutes(ctx) {
     }
   });
 
-  // ===================== 预设标签 / 内容类型（已挂载于 /tags） =====================
+  // ===================== 内容类型（已挂载于 /tags） =====================
 
   // ===================== 话题搜索 =====================
   router.get('/topics/search', requireAuth, async (req, res, next) => {
@@ -886,21 +887,6 @@ module.exports = function createRoutes(ctx) {
       next(e);
     }
   });
-
-  // 标签校验（PRD F-Q1：预设集合，0~3 个）
-  function validateTags(raw) {
-    if (raw === undefined || raw === null) return { list: [] };
-    if (!Array.isArray(raw)) return { error: '标签格式不正确' };
-    const list = [];
-    for (const t of raw) {
-      const v = String(t || '').trim();
-      if (!v) continue;
-      if (!PRESET_TAGS.includes(v)) return { error: `标签「${v}」不在预设集合中` };
-      if (!list.includes(v)) list.push(v);
-    }
-    if (list.length > 3) return { error: '最多绑定 3 个标签' };
-    return { list };
-  }
 
   // 署名槽位解析（PRD F-Q5/Q6）：按内容类型校验必需槽位，并从账号库快照 {id,name,handle,uid}
   function resolveSlots(body, type, userId) {
@@ -1028,9 +1014,7 @@ module.exports = function createRoutes(ctx) {
       // 正文里 @到账号库成员的，补登记为提及（模板变量/人员槽位渲染出的 @ 不会自己进 mentions）
       mentions = mergeLibraryMentions(text, store.listLibAccounts(), mentions, req.user.id);
 
-      // 标签 / 内容类型 / 署名槽位（PRD F-Q1/Q5/Q6）
-      const tags = validateTags(req.body.tags);
-      if (tags.error) return res.status(400).json({ error: tags.error });
+      // 内容类型 / 署名槽位（PRD F-Q5/Q6；标签功能已下线，任务改用模板区分）
       const type = TASK_TYPES.includes(req.body.type) ? req.body.type : '原创';
       const slotsR = resolveSlots(req.body, type, req.user.id);
       if (slotsR.error) return res.status(400).json({ error: slotsR.error });
@@ -1047,7 +1031,6 @@ module.exports = function createRoutes(ctx) {
         topic,
         title,
         mentions,
-        tags: tags.list,
         type,
         slots: slotsR.slots,
         scheduledAt: when.toISOString(),
@@ -1127,11 +1110,6 @@ module.exports = function createRoutes(ctx) {
         } catch (e) {
           return res.status(e.status || 500).json({ error: e.message });
         }
-      }
-      if (req.body.tags !== undefined) {
-        const t = validateTags(req.body.tags);
-        if (t.error) return res.status(400).json({ error: t.error });
-        patch.tags = t.list;
       }
       if (req.body.type !== undefined || req.body.slots !== undefined) {
         const newType = req.body.type !== undefined ? req.body.type : (job.type || '原创');

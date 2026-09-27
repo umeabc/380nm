@@ -3,7 +3,7 @@
   const { $, $$, icon, esc, api, toast, fmtTime, fmtShort, toLocalInput, snippet, publishedImageMap, pubTip } = App;
   const STATUS = { pending: '待发布', publishing: '发布中', published: '已发布', failed: '失败', canceled: '已取消' };
   const STATUS_CLS = { pending: 'blue', publishing: 'amber', published: 'green', failed: 'red', canceled: 'gray' };
-  const state = { jobs: [], users: [], logs: [], accounts: [], images: [], folders: [], jobEdit: false, modalImages: [], editTopic: null, editTopicEditor: null, editMentions: [], editType: '原创', editSlots: {}, editTags: [], presetTags: [], types: [], libAccounts: [] };
+  const state = { jobs: [], users: [], logs: [], accounts: [], images: [], folders: [], jobEdit: false, modalImages: [], editTopic: null, editTopicEditor: null, editMentions: [], editType: '原创', editSlots: {}, types: [], libAccounts: [] };
   const TYPE_LABEL = { '翻嵌': '翻&嵌', '翻译': '纯翻译', '转载': '转载原作', '原创': '原创' };
   const SLOT_ORDER = { '翻嵌': ['trans', 'typo', 'orig'], '翻译': ['trans', 'orig'], '转载': ['orig'], '原创': [] };
   const SLOT_LABEL = { trans: '@翻译账号', typo: '@嵌字账号', orig: '@原作者账号' };
@@ -32,7 +32,7 @@
       .filter((a) => a.handle && a.uid)
       .map((a) => ({ handle: String(a.handle), uid: String(a.uid) }));
     if (!handles.length) return;
-    const re = /@([A-Za-z0-9_一-龥-]{1,30})/g;
+    const re = /@([A-Za-z0-9_぀-ヿ一-龥-]{1,30})/g;
     let m;
     while ((m = re.exec(String(text || '')))) {
       const token = m[1];
@@ -107,7 +107,6 @@
               <dt>发布账号</dt><dd>${esc(j.accountName)}</dd>
               ${owner ? `<dt>所属用户</dt><dd>${esc(owner)}</dd>` : ''}
               ${j.type ? `<dt>内容类型</dt><dd>${TYPE_LABEL[j.type] || esc(j.type)}</dd>` : ''}
-              ${(j.tags || []).length ? `<dt>标签</dt><dd>${j.tags.map((t) => `<span class="tag-sm">${esc(t)}</span>`).join(' ')}</dd>` : ''}
               ${j.title ? `<dt>标题</dt><dd>${esc(j.title)}</dd>` : ''}
               ${j.topic && j.topic.name ? `<dt>话题</dt><dd><a href="https://m.bilibili.com/topic-detail?topic_id=${j.topic.id}&topic_name=${encodeURIComponent(j.topic.name)}" target="_blank" rel="noopener" style="color:var(--primary)">#${esc(j.topic.name)}#</a></dd>` : ''}
               ${(j.mentions || []).length ? `<dt>提及</dt><dd>${j.mentions.map((m) => `<a href="https://space.bilibili.com/${esc(m.uid)}" target="_blank" rel="noopener" style="color:var(--primary)">@${esc(m.name)}</a>`).join('、')}</dd>` : ''}
@@ -147,12 +146,6 @@
         <div class="field" id="e-slot-field" style="margin-bottom:12px">
           <label>账号槽位绑定 <span style="color:var(--text-3)">· 每个 @ 绑定一个角色，从账号库按角色过滤</span></label>
           <div class="slots" id="e-slots"></div>
-        </div>
-        <div class="field" style="margin-bottom:12px">
-          <label>标签 <span style="color:var(--text-3)">· 可多选（1~3 个），用于筛选与分组</span></label>
-          <div class="chips" id="e-tags">
-            ${state.presetTags.map((t) => `<button type="button" class="chip" data-tag="${esc(t)}">${esc(t)}</button>`).join('')}
-          </div>
         </div>
         <div class="foot-hint" id="e-seg-hint" style="margin-bottom:12px"></div>
         <div class="fld" style="margin-bottom:12px">
@@ -194,7 +187,6 @@
       const s = (j.slots || {})[k];
       if (s && s.id) state.editSlots[k] = { id: s.id, name: s.name || '', handle: s.handle || '', uid: s.uid || '' };
     }
-    state.editTags = (j.tags || []).slice();
     const renderSegHint = () => {
       const seg = slotSegmentHTML({ type: state.editType, slots: state.editSlots });
       $('#e-seg-hint').innerHTML = seg ? '署名预览：' + seg : '当前类型无署名片段（原创自由正文）';
@@ -229,25 +221,12 @@
       renderSegHint();
     };
     renderTypeSlots();
-    $$('#e-tags .chip').forEach((b) => b.classList.toggle('on', state.editTags.includes(b.dataset.tag)));
     $('#e-type-seg').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-t]');
       if (!b) return;
       state.editType = b.dataset.t;
       renderTypeSlots();
       toast('已切换为「' + (TYPE_LABEL[state.editType] || state.editType) + '」，署名模板已更新', 'ok', 1600);
-    });
-    $('#e-tags').addEventListener('click', (e) => {
-      const b = e.target.closest('.chip[data-tag]');
-      if (!b) return;
-      const t = b.dataset.tag;
-      const i = state.editTags.indexOf(t);
-      if (i >= 0) state.editTags.splice(i, 1);
-      else {
-        if (state.editTags.length >= 3) { toast('最多绑定 3 个标签', 'warn'); return; }
-        state.editTags.push(t);
-      }
-      b.classList.toggle('on', state.editTags.includes(t));
     });
     const renderMentionPills = () => {
       $('#e-mention-pills').innerHTML = state.editMentions.map((m, i) =>
@@ -386,7 +365,6 @@
           });
           return toast('请先绑定 ' + missing.map((k) => SLOT_LABEL[k]).join('、') + '，未绑定的 @ 无法发布', 'err', 3000);
         }
-        if (!state.editTags.length) return toast('请至少选择一个标签，否则无法参与筛选与分组', 'warn');
         const when = new Date($('#e-time').value);
         if (isNaN(when.getTime())) return toast('时间格式不正确', 'error');
         const slotsPayload = {};
@@ -402,7 +380,6 @@
           mentions: state.editMentions,
           type: state.editType,
           slots: slotsPayload,
-          tags: state.editTags,
           scheduledAt: when.toISOString()
         });
         toast('已保存并重新排队', 'success');
@@ -444,12 +421,11 @@
     const [imgs, accs, meta, libAccs] = await Promise.all([
       api('GET', '/api/images').catch(() => ({ images: [] })),
       api('GET', '/api/accounts').catch(() => ({ accounts: [] })),
-      api('GET', '/api/tags').catch(() => ({ tags: [], types: ['翻嵌', '翻译', '转载', '原创'] })),
+      api('GET', '/api/tags').catch(() => ({ types: ['翻嵌', '翻译', '转载', '原创'] })),
       api('GET', '/api/lib-accounts').catch(() => ({ accounts: [] }))
     ]);
     state.images = imgs.images;
     state.accounts = accs.accounts;
-    state.presetTags = meta.tags || [];
     state.types = meta.types || [];
     state.libAccounts = libAccs.accounts || [];
   }

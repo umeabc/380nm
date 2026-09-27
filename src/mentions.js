@@ -22,7 +22,7 @@ function mergeLibraryMentions(text, libAccounts, existing, userId) {
     .filter((a) => (!userId || a.userId === userId) && a.handle && a.uid)
     .map((a) => ({ handle: String(a.handle), uid: String(a.uid) }));
   if (!handles.length) return list;
-  const re = /@([A-Za-z0-9_一-龥-]{1,30})/g;
+  const re = /@([A-Za-z0-9_぀-ヿ一-龥-]{1,30})/g;
   let m;
   while ((m = re.exec(String(text || '')))) {
     const token = m[1];
