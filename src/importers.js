@@ -358,6 +358,26 @@ async function importExternal(url, { proxy = '', timeout = 60000 } = {}) {
   return [{ buffer: dl.buffer, contentType: dl.contentType, name: stem }];
 }
 
+/* ---------------- Danbooru 作品页 ---------------- */
+async function importDanbooruPost(url, { proxy = '', timeout = 60000 } = {}) {
+  const m = /posts\/(\d+)/.exec(url);
+  const id = m && m[1];
+  if (!id) throw new ImportError('无法解析 Danbooru 作品地址，请确认是 danbooru.donmai.us/posts/<id> 格式');
+  const f = makeFetch(proxy);
+  let res;
+  try {
+    res = await f(`https://danbooru.donmai.us/posts/${id}.json`, { signal: AbortSignal.timeout(15000) });
+  } catch (e) {
+    throw new ImportError('连接 Danbooru 失败（网络错误：' + ((e.cause && e.cause.message) || e.message) + '）', 'timeout');
+  }
+  if (res.status === 404) throw new ImportError('Danbooru 作品不存在或已被删除', 'notfound');
+  if (!res.ok) throw new ImportError(`获取 Danbooru 作品信息失败（HTTP ${res.status}）`, 'network');
+  const j = await res.json().catch(() => null);
+  if (!j || !j.file_url) throw new ImportError('Danbooru 作品无可用原图', 'notfound');
+  const dl = await downloadImage(j.file_url, { proxy, timeout });
+  return [{ buffer: dl.buffer, contentType: dl.contentType, name: `danbooru_${id}${extFromCt(dl.contentType)}` }];
+}
+
 /* ---------------- 统一入口 ---------------- */
 async function importFromUrl(url, settings = {}) {
   const u = String(url || '').trim();
@@ -370,7 +390,35 @@ async function importFromUrl(url, settings = {}) {
   };
   if (PIXIV_ARTWORK_RE.test(u)) return importPixiv(u, opts);
   if (TWEET_HOST_RE.test(u)) return importTwitter(u, opts);
+  if (/^https?:\/\/danbooru\.donmai\.us\/posts\/\d+/i.test(u)) return importDanbooruPost(u, opts);
   return importExternal(u, opts);
+}
+
+/* 轻量作者解析（只拉作品元数据，不下载图片）——供发布页 danbooru 导入填作者用 */
+async function parseSource(url, settings = {}) {
+  const u = String(url || '').trim();
+  const m = PARSE_PIXIV_RE.exec(u);
+  if (!m) throw new ImportError('无法识别的链接：仅支持 Pixiv 作品页链接', 'invalid');
+  const workId = m[1];
+  const f = makeFetch(settings.importProxy || '');
+  const headers = { 'user-agent': UA, referer: 'https://www.pixiv.net/', accept: 'application/json' };
+  if ((settings.pixivSession || '').trim()) headers.cookie = 'PHPSESSID=' + settings.pixivSession.trim();
+  let res;
+  try {
+    res = await f(`https://www.pixiv.net/ajax/illust/${workId}`, { headers, signal: AbortSignal.timeout(8000) });
+  } catch (e) {
+    throw new ImportError('连接 Pixiv 失败（网络错误）', 'timeout');
+  }
+  if (res.status === 404) throw new ImportError('链接失效或不存在的作品', 'notfound');
+  if (!res.ok) throw new ImportError(`获取 Pixiv 作品信息失败（HTTP ${res.status}）`, 'network');
+  const data = await res.json();
+  if (data.error || !data.body) throw new ImportError('需要登录或为限制级作品', 'restricted');
+  return {
+    platform: 'pixiv',
+    workId,
+    author: data.body.userName || '',
+    pixivId: String(data.body.userId || '')
+  };
 }
 
 module.exports = { importFromUrl, ImportError };
@@ -546,4 +594,5 @@ async function parseXWork(url, workId, opts, onProgress) {
 }
 
 module.exports.parseWork = parseWork;
+module.exports.parseSource = parseSource;
 module.exports.imageDims = imageDims;

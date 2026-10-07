@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Danbooru 图源 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css?v=15">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page" id="page">
+    <div class="card">
+      <div class="card-h">Danbooru 图源<span class="hint-r">
+        <span class="hint">缩略图由 danbooru 远端直连加载 · 点击缩略图 → 原图导入未分类并前往发布页</span>
+      </span></div>
+      <div class="db-toolbar">
+        <div class="fld">
+          <input id="db-tags" placeholder="搜索标签，如 blue_archive rating:general（留空回车 = 默认）">
+        </div>
+        <button class="btn primary" id="db-search">搜索</button>
+        <span class="db-page-nav">
+          <button class="btn sm" id="db-prev">上一页</button>
+          <span class="hint" id="db-page">第 1 页</span>
+          <button class="btn sm" id="db-next">下一页</button>
+        </span>
+      </div>
+      <div class="db-grid" id="db-grid"></div>
+    </div>
+  </main>
+</div>
+<div id="toast-wrap"></div>
+<script src="/js/common.js?v=15"></script>
+<script src="/js/pages/danbooru.js?v=15"></script>
+</body>
+</html>

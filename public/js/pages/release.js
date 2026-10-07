@@ -726,6 +726,60 @@
   async function loadFolders() { state.folders = (await api('GET', '/api/folders')).folders; }
   async function loadJobs() { state.jobs = (await api('GET', '/api/jobs')).jobs; }
 
+  /* ================= 从 Danbooru 导入（danbooru 页点图 → ?from=danbooru + sessionStorage） ================= */
+  /** 从 post.source 解析作者说明：X → 作者：{画师} X：@{用户名}；Pixiv → 反推作品页服务器解析；
+      其他来源不填。返回空串表示不填。 */
+  async function resolveSourceCredit(pick) {
+    const src = String(pick.source || '');
+    // 画师名防御性清洗：shijima_(shijima_tc) → shijima（danbooru 页已清洗，这里兜底）
+    const author = String(pick.artist || '').trim().replace(/^(.+?)_\(.*$/, '$1').trim();
+    // X / Twitter：画师名用 Danbooru tag_string_artist，X 用户名从 URL 解析
+    const xm = src.match(/^(?:https?:\/\/)?(?:www\.)?(?:twitter\.com|x\.com)\/([A-Za-z0-9_]{1,30})/i);
+    if (xm) {
+      return formatCredit('x', { author: author || xm[1], handle: xm[1] });
+    }
+    // Pixiv：source 可能是 i.pximg.net 直链（文件名 <PID>_p0.jpg）或 artworks/<PID>，
+    // 提取 PID 反推作品页，由服务器解析作者（前端无 CORS 权限抓 pixiv）
+    // 注意 i.pximg.net 不含子串 "pixiv"，判定要同时认 pximg
+    const pid = (src.match(/pixiv\.net\/artworks\/(\d+)/i) || src.match(/(\d+)_p\d+\./i) || [])[1];
+    if (pid && (/pixiv/i.test(src) || /pximg/i.test(src))) {
+      try {
+        const w = await api('POST', '/api/library/parse-source', { source: `https://www.pixiv.net/artworks/${pid}` });
+        return formatCredit('pixiv', { author: w.author || author, pixivId: w.pixivId });
+      } catch (e) {
+        return ''; // 解析失败 → 不填
+      }
+    }
+    return ''; // 其他来源 → 不填
+  }
+
+  async function importDanbooruPick() {
+    if (new URLSearchParams(location.search).get('from') !== 'danbooru') return;
+    let pick = null;
+    try { pick = JSON.parse(sessionStorage.getItem('danbooru_pick') || ''); } catch (e) { return; }
+    sessionStorage.removeItem('danbooru_pick');
+    if (!pick || !pick.url) return;
+    toast('正在从 Danbooru 导入原图…', 'info');
+    try {
+      // folderId 缺省 = 未分类
+      const r = await api('POST', '/api/library/import', { url: pick.url });
+      await Promise.all([loadImages(), loadFolders(), loadJobs()]);
+      state.pickPage = 1;
+      selectFetchedImages(r.images || []);
+      const credit = await resolveSourceCredit(pick);
+      if (credit) {
+        state.credit = { text: credit, edited: false, work: null };
+        const ci = $('#creditInput');
+        if (ci) ci.value = credit;
+        renderSummary();
+        toast('已填入作者说明（可点「插入正文」加到正文）', 'success');
+      }
+      toast(`已从 Danbooru 导入 ${(r.images || []).length} 张到未分类`, 'success');
+    } catch (e) {
+      toast('Danbooru 导入失败：' + e.message, 'error');
+    }
+  }
+
   /* ================= 启动 ================= */
   App.boot({
     active: 'release',
@@ -879,6 +933,9 @@
       });
 
       $('#btn-submit').addEventListener('click', submitJob);
+
+      // 从 Danbooru 图源页跳转而来：导入原图 + 自动勾选 + 填作者说明
+      importDanbooruPick();
 
       // 管理员视角刷新（不必要），保持 5 秒刷新图库已发布标记
       setInterval(() => {

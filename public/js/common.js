@@ -292,6 +292,7 @@ window.App = (function () {
     { route: 'release', label: '发布动态', ic: 'pencil', group: '工作台', href: '/release' },
     { route: 'queue', label: '发布队列', ic: 'layers', group: '工作台', href: '/queue', badge: true },
     { route: 'library', label: '图库', ic: 'image', group: '素材与配置', href: '/library' },
+    { route: 'danbooru', label: 'Danbooru 图源', ic: 'external', group: '素材与配置', href: '/danbooru' },
     { route: 'templates', label: '模板管理', ic: 'layout', group: '素材与配置', href: '/templates' },
     { route: 'libaccounts', label: '账号库', ic: 'users', group: '素材与配置', href: '/libaccounts' },
     { route: 'accounts', label: '账号管理', ic: 'user', group: '素材与配置', href: '/accounts' },
