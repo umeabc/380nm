@@ -41,12 +41,13 @@
     box.innerHTML = posts.map((p) => {
       const w = p.image_width || '', h = p.image_height || '';
       const artist = cleanArtist(p.tag_string_artist);
+      // 缩略图走服务器代理缓存（用户浏览器直连 cdn.donmai.us 会被 Cloudflare 403）
+      const thumbSrc = '/api/danbooru/thumb?url=' + encodeURIComponent(p.preview_file_url);
       return `<div class="db-cell"
         data-url="${esc(p.file_url)}" data-post="${p.id}"
-        data-large="${esc(p.large_file_url || '')}" data-size="${p.file_size || 0}"
         data-artist="${esc(artist)}" data-source="${esc(p.source || '')}"
         title="${esc(artist || ('Post ' + p.id))}${w ? ` · ${w}×${h}` : ''} · 点击导入未分类并前往发布页">
-        <img loading="lazy" referrerpolicy="no-referrer" src="${esc(p.preview_file_url)}" alt="">
+        <img loading="lazy" referrerpolicy="no-referrer" src="${esc(thumbSrc)}" alt="">
         ${srcBadge(p.source)}
         <div class="db-meta"><span>${esc(artist || ('#' + p.id))}</span>${w ? `<span class="db-dim">${w}×${h}</span>` : ''}</div>
       </div>`;
@@ -81,8 +82,6 @@
     if (!url) return;
     const pick = {
       url,
-      large: elm.dataset.large || '',
-      size: Number(elm.dataset.size) || 0,
       postId: elm.dataset.post,
       artist: elm.dataset.artist,
       source: elm.dataset.source

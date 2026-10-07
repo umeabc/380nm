@@ -755,39 +755,20 @@
     return ''; // 其他来源 → 不填
   }
 
-  /** 依次尝试拉取原图字节（cdn.donmai.us 对数据中心 IP 封 403，须走用户浏览器） */
-  async function fetchDanbooruBlob(pick) {
-    // 超过上传上限(20MB)自动改用 sample 大图，避免被 /api/upload 拒
-    const primary = (pick.size > 20 * 1024 * 1024 && pick.large) ? pick.large : pick.url;
-    const tries = [primary, pick.url, pick.large].filter((u) => u && u !== primary);
-    for (const u of [primary, ...tries]) {
-      try {
-        const r = await fetch(u, { signal: AbortSignal.timeout(90000) });
-        if (!r.ok) continue;
-        const blob = await r.blob();
-        if (blob.size && blob.type.startsWith('image/')) return blob;
-      } catch (e) { /* 试下一个 */ }
-    }
-    throw new Error('无法下载原图（网络或跨域受限）');
-  }
-
   async function importDanbooruPick() {
     if (new URLSearchParams(location.search).get('from') !== 'danbooru') return;
     let pick = null;
     try { pick = JSON.parse(sessionStorage.getItem('danbooru_pick') || ''); } catch (e) { return; }
     sessionStorage.removeItem('danbooru_pick');
     if (!pick || !pick.url) return;
-    toast('正在从 Danbooru 下载原图…', 'info');
+    toast('正在从 Danbooru 导入原图…', 'info');
     try {
-      // 原图从用户浏览器直连 cdn.donmai.us 下载（服务器无法直连、代理亦被 403），
-      // 再走上传进度弹窗入库（folderId 缺省 = 未分类）—— 服务器零 danbooru 流量
-      const blob = await fetchDanbooruBlob(pick);
-      const ext = String(blob.type || 'image/jpeg').split('/')[1] || 'jpg';
-      const file = new File([blob], `danbooru_${pick.postId || 'img'}.${ext}`, { type: blob.type || 'image/jpeg' });
-      const res = await App.uploadImages([file], { folderId: null });
+      // 原图由服务器抓取入库（服务器对 cdn.donmai.us 用无 UA + danbooru Referer，
+      // 浏览器直连会被 Cloudflare 403）；folderId 缺省 = 未分类
+      const r = await api('POST', '/api/library/import', { url: pick.url });
       await Promise.all([loadImages(), loadFolders(), loadJobs()]);
       state.pickPage = 1;
-      selectFetchedImages(res.images || []);
+      selectFetchedImages(r.images || []);
       const credit = await resolveSourceCredit(pick);
       if (credit) {
         state.credit = { text: credit, edited: false, work: null };
@@ -796,7 +777,7 @@
         renderSummary();
         toast('已填入作者说明（可点「插入正文」加到正文）', 'success');
       }
-      toast(`已从 Danbooru 导入 ${(res.images || []).length} 张到未分类`, 'success');
+      toast(`已从 Danbooru 导入 ${(r.images || []).length} 张到未分类`, 'success');
     } catch (e) {
       toast('Danbooru 导入失败：' + e.message, 'error');
     }

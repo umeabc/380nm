@@ -1,5 +1,8 @@
 const express = require('express');
 const multer = require('multer');
+const path = require('path');
+const crypto = require('crypto');
+const fsp = require('fs/promises');
 const { genId, sanitizeUser } = require('./store');
 const { renderTemplate } = require('./render');
 const { TASK_TYPES, TYPE_SLOTS, SLOT_LABELS, slotSegment } = require('./templates');
@@ -12,7 +15,7 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024, files: 9 }
 });
 
-const { importFromUrl, parseWork, parseSource, ImportError } = require('./importers');
+const { importFromUrl, parseWork, parseSource, downloadImage, ImportError } = require('./importers');
 const { buildZip } = require('./zip');
 const { cookieErrorText } = require('./cookie-monitor');
 const { mergeLibraryMentions } = require('./mentions');
@@ -20,6 +23,8 @@ const { mergeLibraryMentions } = require('./mentions');
 const MAX_IMAGES = 9;
 const MAX_IMPORT_IMAGES = 30;
 const COOKIE = 'sid';
+// danbooru 缩略图代理缓存：保留一天后删除，需要时再从远端抓取
+const DANBOORU_THUMB_TTL_MS = 24 * 60 * 60 * 1000;
 
 // 全站导入设置的机密字段
 const SETTING_SECRETS = ['pixivSession', 'twitterAuth', 'twitterCt0'];
@@ -584,6 +589,58 @@ module.exports = function createRoutes(ctx) {
       res.json(info);
     } catch (e) {
       res.status(400).json({ error: (e && e.code) || 'parse-failed' });
+    }
+  });
+
+  // ===================== Danbooru 缩略图代理（服务器现抓 + 一天缓存） =====================
+  // 背景：cdn.donmai.us 对用户浏览器网络的「带浏览器 UA 请求」直接 403（Cloudflare），
+  // 但服务器用无 UA + danbooru Referer 可以拿到 → 由服务器代抓，缩略图缓存一天后删除，
+  // 需要时再从远端抓取。缓存目录 <data>/danbooru-thumbs/，不进图库。
+  function contentTypeByExt(file) {
+    const m = {
+      '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+      '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp', '.avif': 'image/avif'
+    };
+    return m[path.extname(file).toLowerCase()] || 'application/octet-stream';
+  }
+  async function sweepThumbCache(dir) {
+    try {
+      const entries = await fsp.readdir(dir, { withFileTypes: true });
+      for (const en of entries) {
+        if (!en.isFile()) continue;
+        const p = path.join(dir, en.name);
+        const st = await fsp.stat(p).catch(() => null);
+        if (st && Date.now() - st.mtimeMs > DANBOORU_THUMB_TTL_MS) await fsp.unlink(p).catch(() => {});
+      }
+    } catch (e) { /* 目录不存在等一律忽略 */ }
+  }
+
+  router.get('/danbooru/thumb', requireAuth, async (req, res) => {
+    const url = String(req.query.url || '').trim();
+    let host = '';
+    try { host = new URL(url).hostname; } catch (e) { /* 非法 URL */ }
+    if (host !== 'cdn.donmai.us') return res.status(400).json({ error: '仅允许 cdn.donmai.us 图片' });
+    const thumbDir = path.join(path.dirname(store.file), 'danbooru-thumbs');
+    const key = crypto.createHash('md5').update(url).digest('hex');
+    const file = path.join(thumbDir, key + (path.extname(new URL(url).pathname) || '.jpg'));
+    try {
+      let buf = null;
+      const st = await fsp.stat(file).catch(() => null);
+      if (st && Date.now() - st.mtimeMs < DANBOORU_THUMB_TTL_MS) {
+        buf = await fsp.readFile(file); // 缓存命中（一天内）
+      } else {
+        if (st) await fsp.unlink(file).catch(() => {}); // 过期 → 删除再远端抓
+        const dl = await downloadImage(url, { timeout: 30000 }); // 内部已对 cdn.donmai.us 去 UA + 带 referer
+        buf = dl.buffer;
+        await fsp.mkdir(thumbDir, { recursive: true }).catch(() => {});
+        await fsp.writeFile(file, buf).catch(() => {});
+        sweepThumbCache(thumbDir).catch(() => {});
+      }
+      res.set('content-type', contentTypeByExt(file));
+      res.set('cache-control', 'public, max-age=86400'); // 浏览器也缓存一天
+      res.send(buf);
+    } catch (e) {
+      res.status(502).json({ error: '缩略图抓取失败：' + e.message });
     }
   });
 

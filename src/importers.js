@@ -190,11 +190,19 @@ function extFromCt(ct) {
   return m[String(ct || '').split(';')[0].trim().toLowerCase()] || '.jpg';
 }
 
-async function downloadImage(url, { proxy, headers = {}, timeout = 60000 } = {}) {
+async function downloadImage(url, { proxy, headers = {}, timeout = 60000, userAgent = UA } = {}) {
   const f = makeFetch(proxy);
+  // cdn.donmai.us：Cloudflare 会从机房/代理 IP 对「浏览器 UA」与「无 UA」的请求 403，
+  // 但放行「非浏览器 UA + danbooru Referer」的请求（实测 undici 下 bili-dyn/1.0+referer → 200）
+  const isDonmai = /^https?:\/\/cdn\.donmai\.us\//i.test(url);
+  if (isDonmai) {
+    userAgent = 'bili-dyn/1.0';
+    if (!headers.referer) headers = { ...headers, referer: 'https://danbooru.donmai.us/' };
+  }
+  const reqHeaders = { ...(userAgent ? { 'user-agent': userAgent } : {}), ...headers };
   let res;
   try {
-    res = await f(url, { headers: { 'user-agent': UA, ...headers }, signal: AbortSignal.timeout(timeout) });
+    res = await f(url, { headers: reqHeaders, signal: AbortSignal.timeout(timeout) });
   } catch (e) {
     const cause = (e.cause && e.cause.message) || e.message;
     throw new ImportError('下载图片失败（网络错误：' + cause + '）：' + String(url).slice(0, 90));
@@ -595,4 +603,5 @@ async function parseXWork(url, workId, opts, onProgress) {
 
 module.exports.parseWork = parseWork;
 module.exports.parseSource = parseSource;
+module.exports.downloadImage = downloadImage;
 module.exports.imageDims = imageDims;
