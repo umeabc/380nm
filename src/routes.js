@@ -12,7 +12,7 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024, files: 9 }
 });
 
-const { importFromUrl, parseWork, ImportError } = require('./importers');
+const { importFromUrl, parseWork, parseSource, ImportError } = require('./importers');
 const { buildZip } = require('./zip');
 const { cookieErrorText } = require('./cookie-monitor');
 const { mergeLibraryMentions } = require('./mentions');
@@ -571,6 +571,19 @@ module.exports = function createRoutes(ctx) {
       const code = (e && e.code && PARSE_ERRORS[e.code]) ? e.code : 'network';
       send({ type: 'error', step: Math.min(done, 3), error: code, message: PARSE_ERRORS[code].t });
       res.end();
+    }
+  });
+
+  // ===================== 作者解析（轻量，只取作品元数据不下载图片） =====================
+  // 供发布页「从 Danbooru 导入」流程反推 Pixiv 作者用（前端从 source 提取 PID 后调用）
+  router.post('/library/parse-source', requireAuth, async (req, res) => {
+    try {
+      const source = String((req.body && req.body.source) || '').trim();
+      if (!source) return res.status(400).json({ error: '缺少 source' });
+      const info = await parseSource(source, store.getSettings());
+      res.json(info);
+    } catch (e) {
+      res.status(400).json({ error: (e && e.code) || 'parse-failed' });
     }
   });
 
