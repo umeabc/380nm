@@ -43,6 +43,7 @@
       const artist = cleanArtist(p.tag_string_artist);
       return `<div class="db-cell"
         data-url="${esc(p.file_url)}" data-post="${p.id}"
+        data-large="${esc(p.large_file_url || '')}" data-size="${p.file_size || 0}"
         data-artist="${esc(artist)}" data-source="${esc(p.source || '')}"
         title="${esc(artist || ('Post ' + p.id))}${w ? ` · ${w}×${h}` : ''} · 点击导入未分类并前往发布页">
         <img loading="lazy" referrerpolicy="no-referrer" src="${esc(p.preview_file_url)}" alt="">
@@ -80,6 +81,8 @@
     if (!url) return;
     const pick = {
       url,
+      large: elm.dataset.large || '',
+      size: Number(elm.dataset.size) || 0,
       postId: elm.dataset.post,
       artist: elm.dataset.artist,
       source: elm.dataset.source
