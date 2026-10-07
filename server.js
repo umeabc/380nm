@@ -30,6 +30,7 @@ async function main() {
   app.get('/queue', page('queue'));
   app.get('/queue/:id', page('job'));
   app.get('/library', page('library'));
+  app.get('/danbooru', page('danbooru'));
   app.get('/templates', page('templates'));
   app.get('/templates/:id', page('template-edit'));
   app.get('/libaccounts', page('libaccounts'));
