@@ -17,11 +17,11 @@
     return (m ? m[1] : t).trim();
   }
 
-  /** 来源平台徽标（X / Pixiv / 其他不显示） */
+  /** 来源平台徽标：X 来源显示 X，pixiv 来源显示 P（i.pximg.net 不含子串 "pixiv"，需同时认 pximg） */
   function srcBadge(source) {
     const s = String(source || '');
     if (/(x\.com|twitter\.com)/i.test(s)) return '<span class="db-src x">X</span>';
-    if (/pixiv/i.test(s)) return '<span class="db-src pixiv">Pixiv</span>';
+    if (/pixiv|pximg/i.test(s)) return '<span class="db-src pixiv">P</span>';
     return '';
   }
 
@@ -46,10 +46,16 @@
       return `<div class="db-cell"
         data-url="${esc(p.file_url)}" data-post="${p.id}"
         data-artist="${esc(artist)}" data-source="${esc(p.source || '')}"
-        title="${esc(artist || ('Post ' + p.id))}${w ? ` · ${w}×${h}` : ''} · 点击导入未分类并前往发布页">
+        title="${esc(artist || ('Post ' + p.id))}${w ? ` · ${w}×${h}` : ''} · ID ${p.id} · 点击导入未分类并前往发布页">
         <img loading="lazy" referrerpolicy="no-referrer" src="${esc(thumbSrc)}" alt="">
         ${srcBadge(p.source)}
-        <div class="db-meta"><span>${esc(artist || ('#' + p.id))}</span>${w ? `<span class="db-dim">${w}×${h}</span>` : ''}</div>
+        <div class="db-meta">
+          <div class="db-info">
+            <span class="db-artist">${esc(artist || ('#' + p.id))}</span>
+            <span class="db-id">${p.id}</span>
+          </div>
+          ${w ? `<span class="db-dim">${w}×${h}</span>` : ''}
+        </div>
       </div>`;
     }).join('');
   }

@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const V = '17';
+const V = '18';
 const dir = path.join(__dirname, '..', 'public');
 const files = fs.readdirSync(dir).filter((f) => f.endsWith('.html'));
 let n = 0;
