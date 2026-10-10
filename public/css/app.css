@@ -655,3 +655,72 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 #var-topic,#var-at{display:flex;flex-direction:column;gap:7px}
 #var-topic .chips,#var-at .chips{margin-top:1px}
 .foot-hint .hl{color:var(--text-2)}
+
+/* ================= 批量编排页面样式 ================= */
+.batch-page{}
+.batch-layout{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}
+.batch-config{position:sticky;top:76px;margin-bottom:0}
+.batch-fields{display:flex;flex-direction:column;gap:16px}
+.batch-section{display:flex;flex-direction:column;gap:12px}
+.batch-section:not(:first-child){border-top:1px solid var(--border);padding-top:14px}
+.batch-section-title{font-size:12.5px;font-weight:600;color:var(--text-2);margin-bottom:8px}
+.batch-template-hint{}
+.batch-links{resize:vertical}
+.batch-link-count{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:12px;font-variant-numeric:tabular-nums}
+.batch-field-error{font-size:12px;color:var(--red);margin-top:4px}
+.batch-time-window{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center}
+.batch-avoid-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px 8px}
+.batch-avoid-grid label{font-size:12px;display:flex;align-items:center;gap:4px}
+.batch-credit-sample{background:var(--gray-soft);border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;font-size:12px;color:var(--text-2);white-space:pre-wrap}
+.batch-schedule-hint{font-size:12px;line-height:1.6}
+.batch-config-actions{display:flex;flex-wrap:wrap;gap:8px;border-top:1px solid var(--border);padding-top:14px;margin-top:16px}
+.batch-config-actions .btn.primary{flex:1;text-align:center}
+.batch-results{min-width:0;display:flex;flex-direction:column;gap:12px}
+.batch-prerequisite{}
+.batch-output{margin-bottom:0}
+.batch-output-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.batch-state{min-width:0}
+.batch-empty{padding:52px 20px;border:none;box-shadow:none;border-radius:0}
+.batch-progress{padding-bottom:14px}
+.batch-progress-bar{height:6px;border-radius:999px;background:var(--border-2);overflow:hidden;margin-top:10px}
+.batch-progress-meta{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.batch-table-wrap{overflow-x:auto}
+.batch-table{width:100%;border-collapse:collapse;min-width:860px}
+.batch-table thead{background:var(--gray-soft);font-size:12px;font-weight:500;color:var(--text-3)}
+.batch-table th,.batch-table td{padding:10px 8px;border-bottom:1px solid var(--border)}
+.batch-table th{text-align:left}
+.batch-row{background:#fff}
+.batch-cell{min-width:0;font-size:12.5px;color:var(--text-2)}
+.batch-thumb{width:36px;height:36px;border-radius:var(--r-sm);border:1px solid var(--border-2);object-fit:cover}
+.batch-title{font-weight:500;color:var(--text)}
+.batch-credit{font-size:12px;white-space:pre-wrap}
+.batch-time-badge{font-variant-numeric:tabular-nums}
+.batch-time-badge.is-avoid,.batch-time-badge.is-collision{background:var(--amber-soft);color:var(--amber);border:1px solid var(--amber)}
+.batch-row-actions{display:flex;flex-wrap:wrap;gap:4px}
+.batch-row-error{font-size:11.5px;color:var(--red);margin-top:5px}
+.batch-row-editor{padding:12px;background:var(--gray-soft);border-top:1px solid var(--border)}
+.batch-notice{display:flex;align-items:flex-start;gap:9px}
+.batch-notice svg{flex:none;margin-top:1px}
+.batch-resultbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:11px 15px;border-radius:var(--r-md);border:1px solid var(--border)}
+.batch-result-actions{display:flex;flex-wrap:wrap;gap:8px;margin-left:auto}
+.batch-confirm-mask{}
+.batch-confirm{max-width:520px}
+.batch-mobile-label{display:none}
+@media(max-width:980px){
+  .batch-layout{grid-template-columns:1fr}
+  .batch-config{position:static}
+  .batch-table-wrap{overflow-x:visible}
+  .batch-table{display:block;min-width:0}
+  .batch-table thead{display:none}
+  .batch-table tbody{display:block}
+  .batch-row{display:block;border:1px solid var(--border);border-radius:var(--r-md);padding:12px;margin-bottom:10px}
+  .batch-row td{display:block;border:none;padding:0;margin-bottom:8px}
+  .batch-mobile-label{display:inline;font-size:11.5px;color:var(--text-3);margin-right:6px}
+}
+@media(max-width:720px){
+  .batch-output-head{flex-direction:column;align-items:flex-start}
+  .batch-result-actions{margin-left:0}
+}
+@media(max-width:480px){
+  .batch-avoid-grid{grid-template-columns:repeat(3,1fr)}
+}

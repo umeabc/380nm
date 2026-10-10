@@ -11,6 +11,7 @@
 - **模板 + 变量**：每个用户内置「每日早报 / 视频更新 / 日常」三个模板，可自由增删改，`{{变量}}` 占位，实时预览
 - **图文编排**：图片上传自动入库（最多 9 张，按点选顺序发布），拖拽上传，图片库统一管理
 - **话题绑定**：输入关键词联想搜索B站话题，选择后随动态发布（自动在正文追加 `#话题名#`）
+- **批量编排**：一次录入最多 50 条作品链接，串行解析并抓取原图入库、自动生成署名，按连续整点排期（尽量避让指定整点），预览编辑后一键入队。零数据模型改动，解析成功即入图库
 - **发布队列**：任务持久化，重启不丢；支持编辑、取消、立即发布、重新入队、删除；点击任务进入详情页（完整内容、配图、相关日志、操作按钮）
   - 标签体系（内置 5 个标签，任务可绑 0~3 个）、内容类型（翻&嵌 / 纯翻译 / 转载原作 / 原创）
   - 多维筛选：标签 + 发布目标 + 类型 + 计划日期 + 状态 Tab（数字联动）；支持按发布目标/标签分组折叠视图
@@ -179,10 +180,12 @@ docker compose up -d
 ├── public/                多页面前端（Comiku 风格 UI，移动端自适应）
 │   ├── css/app.css        全局样式
 │   ├── js/common.js       共享外壳（侧边栏/顶栏）、鉴权守卫、工具函数
+│   ├── js/schedule.js     批量编排排期算法（纯函数）
 │   ├── js/pages/*.js      各页面逻辑
 │   ├── login.html         /login        登录
 │   ├── dashboard.html     /dashboard    总览（统计 + 7日计划 + 最近发布）
 │   ├── release.html       /release      发布动态
+│   ├── batch.html         /batch        批量编排
 │   ├── libaccounts.html   /libaccounts  账号库（署名成员目录）
 │   ├── queue.html         /queue        发布队列（多维筛选/分组视图）
 │   ├── job.html           /queue/:id    任务详情（含类型/槽位/标签编辑）
@@ -193,7 +196,13 @@ docker compose up -d
 │   ├── users.html         /users        用户管理（管理员）
 │   ├── settings.html      /settings     全站导入设置（Pixiv/X 凭据与代理，管理员）
 │   └── log.html           /log          运行日志
-├── scripts/reset.js       清空本地数据
+├── tests/                 测试文件（Node.js 内置 test runner）
+│   ├── schedule.test.js   排期算法单元测试
+│   └── jobs-batch.test.js 批量入队接口集成测试
+├── scripts/
+│   ├── reset.js           清空本地数据
+│   ├── bust-assets.js     更新静态资源版本号
+│   └── migrate-to-r2.js   本地图库迁移到 R2
 └── data/                  运行时生成（db.json + uploads/）
 ```
 
