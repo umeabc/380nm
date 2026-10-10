@@ -27,6 +27,7 @@ async function main() {
   app.get('/login', page('login'));
   app.get('/dashboard', page('dashboard'));
   app.get('/release', page('release'));
+  app.get('/batch', page('batch'));
   app.get('/queue', page('queue'));
   app.get('/queue/:id', page('job'));
   app.get('/library', page('library'));

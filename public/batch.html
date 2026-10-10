@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>批量编排 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css?v=19">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="overlay" id="overlay"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page batch-page" id="page">
+    <div class="pagehead">
+      <div class="ph-row">
+        <h2>批量编排</h2>
+        <div class="ph-ops">
+          <a class="btn" href="/queue">前往发布队列</a>
+        </div>
+      </div>
+      <div class="hint">一次录入作品链接，统一取图、署名与排期，确认后加入发布队列。</div>
+    </div>
+
+    <div class="warn batch-prerequisite" id="no-account-warn" style="display:none">
+      暂无发布账号，请先添加账号后再编排。
+      <a class="btn sm" href="/accounts" style="margin-left:10px">前往账号管理</a>
+    </div>
+
+    <div class="batch-layout">
+      <!-- 左栏：配置 -->
+      <aside class="card batch-config">
+        <div class="card-h">
+          编排配置
+          <span class="hint-r">最多 50 条</span>
+        </div>
+        <div class="batch-fields" id="batch-fields">
+          <!-- 发布目标 -->
+          <div class="batch-section">
+            <div class="fld">
+              <label>发布账号</label>
+              <select class="ctl" id="b-account">
+                <option value="">— 选择发布账号 —</option>
+              </select>
+            </div>
+            <div class="fld">
+              <label>动态模板</label>
+              <select class="ctl" id="b-template"></select>
+              <div class="hint batch-template-hint" id="tpl-hint"></div>
+            </div>
+            <div class="fld">
+              <label>话题（可选）</label>
+              <div class="topic-wrap">
+                <input class="ctl" id="b-topic" placeholder="搜索话题，应用于本批全部条目" autocomplete="off">
+                <div class="topic-dd" id="topic-dd" style="display:none"></div>
+              </div>
+              <div class="chips" id="topic-chips"></div>
+              <div id="recent-topics" style="display:none"></div>
+            </div>
+          </div>
+
+          <!-- 链接录入 -->
+          <div class="batch-section">
+            <div class="batch-section-title">链接录入</div>
+            <div class="fld">
+              <label>作品链接 <span style="color:var(--text-3)">· 每行一条</span></label>
+              <textarea class="ctl batch-links" id="b-links" rows="10" placeholder="一行一个作品链接（X / Pixiv），最多 50 条"></textarea>
+              <div class="batch-link-count" id="link-count"></div>
+              <div class="batch-field-error" id="link-error"></div>
+            </div>
+            <div class="hint">解析成功即入图库；未入队也会保留已抓取图片。</div>
+          </div>
+
+          <!-- 排期设置 -->
+          <div class="batch-section">
+            <div class="batch-section-title">排期设置</div>
+            <div class="fld">
+              <label>日期</label>
+              <input type="date" class="ctl" id="b-date">
+              <div class="batch-field-error" id="date-error"></div>
+            </div>
+            <div class="fld">
+              <label>时间窗</label>
+              <div class="batch-time-window">
+                <input type="time" class="ctl" id="b-start" step="3600">
+                <span style="color:var(--text-3)">～</span>
+                <input type="time" class="ctl" id="b-end" step="3600">
+              </div>
+              <div class="hint">含起止整点，按连续 1 小时间隔排期</div>
+              <div class="batch-field-error" id="time-error"></div>
+            </div>
+            <div class="fld">
+              <label>避让整点</label>
+              <div class="batch-avoid-grid" id="avoid-grid"></div>
+              <div class="hint">尽量避让；无法形成连续时段时会放宽并标出。</div>
+            </div>
+            <div class="fld">
+              <label>标题前缀</label>
+              <input class="ctl" id="b-title-prefix" value="优香" maxlength="10">
+              <div class="hint">生成格式：「{前缀} {MM-DD} {HH:MM}」，不超过 20 字。</div>
+            </div>
+            <div class="fld">
+              <label>署名格式（只读）</label>
+              <div class="batch-credit-sample">
+                作者：{作者}<br>X：@{handle}
+              </div>
+              <div class="hint">Pixiv 第二行为 P：{pixivId}</div>
+            </div>
+            <div class="batch-schedule-hint" id="schedule-hint"></div>
+          </div>
+        </div>
+
+        <div class="batch-config-actions">
+          <button class="btn primary" id="btn-start" style="flex:1">开始编排</button>
+          <button class="btn danger" id="btn-abort" style="display:none">中止</button>
+        </div>
+      </aside>
+
+      <!-- 右栏：结果 -->
+      <section class="batch-results">
+        <div class="warn batch-notice" id="relaxed-warn" style="display:none"></div>
+        <div class="warn batch-notice" id="collision-warn" style="display:none"></div>
+        <div class="batch-resultbar" id="result-bar" style="display:none"></div>
+
+        <div class="card batch-output">
+          <div class="card-h batch-output-head">
+            <span>编排结果</span>
+            <span class="hint-r" id="result-summary"></span>
+            <div id="result-actions" style="display:none;margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"></div>
+          </div>
+          <div class="batch-state" id="batch-state">
+            <div class="empty batch-empty">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+              <div class="empty-t">还没有编排结果</div>
+              <div class="empty-s">在左侧录入作品链接并完成配置，点击「开始编排」生成预览。</div>
+              <div class="hint" style="margin-top:12px">解析成功会抓取原图入图库；确认入队前不会创建发布任务。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="mask batch-confirm-mask" id="confirm-mask" style="display:none">
+  <div class="modal batch-confirm">
+    <div class="modal-head">
+      <div class="modal-title" id="confirm-title">确认批量入队</div>
+    </div>
+    <div class="modal-body" id="confirm-body"></div>
+    <div class="modal-foot">
+      <button class="btn" id="confirm-cancel">返回检查</button>
+      <button class="btn primary" id="confirm-ok">确认入队</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-wrap"></div>
+<script src="/js/common.js?v=19"></script>
+<script src="/js/schedule.js?v=19"></script>
+<script src="/js/pages/batch.js?v=19"></script>
+</body>
+</html>

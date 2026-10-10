@@ -334,6 +334,11 @@ class Store {
     this.save();
     return job;
   }
+  // 批量入队专用：只更新内存，不触发 save
+  addJobSilent(job) {
+    this.data.jobs.push(job);
+    return job;
+  }
   async updateJob(id, patch) {
     const j = this.getJob(id);
     if (!j) return null;
@@ -357,6 +362,17 @@ class Store {
     });
     if (this.data.logs.length > 500) this.data.logs.length = 500;
     this.save();
+  }
+  // 批量入队专用：只更新内存，不触发 save
+  addLogSilent(level, message, extra) {
+    this.data.logs.unshift({
+      time: new Date().toISOString(),
+      level,
+      message,
+      userId: extra && extra.userId,
+      ...(extra || {})
+    });
+    if (this.data.logs.length > 500) this.data.logs.length = 500;
   }
   listLogs() {
     return this.data.logs;

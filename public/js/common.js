@@ -290,6 +290,7 @@ window.App = (function () {
   const NAV = [
     { route: 'dashboard', label: '总览', ic: 'home', group: '工作台', href: '/dashboard' },
     { route: 'release', label: '发布动态', ic: 'pencil', group: '工作台', href: '/release' },
+    { route: 'batch', label: '批量编排', ic: 'layout', group: '工作台', href: '/batch' },
     { route: 'queue', label: '发布队列', ic: 'layers', group: '工作台', href: '/queue', badge: true },
     { route: 'library', label: '图库', ic: 'image', group: '素材与配置', href: '/library' },
     { route: 'danbooru', label: 'Danbooru 图源', ic: 'external', group: '素材与配置', href: '/danbooru' },

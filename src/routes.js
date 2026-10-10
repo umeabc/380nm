@@ -1036,91 +1036,161 @@ module.exports = function createRoutes(ctx) {
     res.json({ jobs: store.listJobs().filter(scopeFilter(req)) });
   });
 
-  router.post('/jobs', requireAuth, async (req, res, next) => {
+  // 抽取的任务创建逻辑（供单条与批量复用）
+  function jobInputError(message, status = 400) {
+    const err = new Error(message);
+    err.status = status;
+    return err;
+  }
+
+  async function createJobFromInput(user, body, { deferred = false, batch = false } = {}) {
+    const { templateId, accountId, variables = {}, images = [], scheduledAt } = body || {};
+    
+    const template = store.getTemplate(templateId);
+    if (!template || template.userId !== user.id) {
+      throw jobInputError('模板不存在');
+    }
+    const account = store.getAccount(accountId);
+    if (!account || account.userId !== user.id) {
+      throw jobInputError('请选择要发布的B站账号');
+    }
+
+    const text = renderTemplate(template.content, variables).trim();
+    if (!text) throw jobInputError('动态内容为空，请填写模板变量');
+    
+    const limit = Math.max(0, Math.min(MAX_IMAGES, template.maxImages || MAX_IMAGES));
+    if (images.length > limit) {
+      throw jobInputError(`图片数量超出限制（模板最多 ${limit} 张）`);
+    }
+    for (const i of images) {
+      const img = store.listImages().find((x) => x.key === i.key);
+      if (!img || img.userId !== user.id) {
+        throw jobInputError('包含不属于当前用户的图片');
+      }
+    }
+
+    let when = scheduledAt ? new Date(scheduledAt) : new Date();
+    if (isNaN(when.getTime())) throw jobInputError('计划时间格式不正确');
+    if (when.getTime() < Date.now()) when = new Date(); // 已过时间按立即发布处理
+
+    let topic = null;
     try {
-      const { templateId, accountId, variables = {}, images = [], scheduledAt } = req.body || {};
-      const template = store.getTemplate(templateId);
-      if (!template || template.userId !== req.user.id) {
-        return res.status(400).json({ error: '模板不存在' });
+      topic = await resolveTopic(user, account, body.topic);
+    } catch (e) {
+      throw jobInputError(e.message, e.status || 500);
+    }
+
+    let title = String((body && body.title) || '').trim();
+    if (title.length > 20) throw jobInputError('动态标题最多 20 个字');
+
+    let mentions = [];
+    try {
+      mentions = await resolveMentions(user, account, body.mentions);
+    } catch (e) {
+      throw jobInputError(e.message, e.status || 500);
+    }
+    mentions = mergeLibraryMentions(text, store.listLibAccounts(), mentions, user.id);
+
+    const type = TASK_TYPES.includes(body.type) ? body.type : '原创';
+    const slotsR = resolveSlots(body, type, user.id);
+    if (slotsR.error) throw jobInputError(slotsR.error);
+
+    const job = {
+      id: genId('job'),
+      userId: user.id,
+      templateId: template.id,
+      templateName: template.name,
+      accountId: account.id,
+      accountName: account.uname || account.name,
+      text,
+      images: images.map((i) => ({ key: i.key, name: i.name || '', url: i.url || '' })),
+      topic,
+      title,
+      mentions,
+      type,
+      slots: slotsR.slots,
+      scheduledAt: when.toISOString(),
+      status: 'pending',
+      attempts: 0,
+      lastError: null,
+      publishedAt: null,
+      dynamicId: '',
+      dynamicUrl: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    if (deferred) {
+      // 批量模式：使用 Silent 方法，不立即 save
+      store.addJobSilent(job);
+      if (topic && batch) pushRecentTopicSilent(user.id, topic);
+      if (batch) {
+        store.addLogSilent('info', `批量入队任务：${job.title}`, { jobId: job.id, userId: user.id });
       }
-      const account = store.getAccount(accountId);
-      if (!account || account.userId !== req.user.id) {
-        return res.status(400).json({ error: '请选择要发布的B站账号' });
-      }
-
-      const text = renderTemplate(template.content, variables).trim();
-      if (!text) return res.status(400).json({ error: '动态内容为空，请填写模板变量' });
-      const limit = Math.max(0, Math.min(MAX_IMAGES, template.maxImages || MAX_IMAGES));
-      if (images.length > limit) {
-        return res.status(400).json({ error: `图片数量超出限制（模板最多 ${limit} 张）` });
-      }
-      for (const i of images) {
-        const img = store.listImages().find((x) => x.key === i.key);
-        if (!img || img.userId !== req.user.id) {
-          return res.status(400).json({ error: '包含不属于当前用户的图片' });
-        }
-      }
-
-      let when = scheduledAt ? new Date(scheduledAt) : new Date();
-      if (isNaN(when.getTime())) return res.status(400).json({ error: '计划时间格式不正确' });
-      if (when.getTime() < Date.now()) when = new Date(); // 已过时间按立即发布处理
-
-      let topic = null;
-      try {
-        topic = await resolveTopic(req.user, account, req.body.topic);
-      } catch (e) {
-        return res.status(e.status || 500).json({ error: e.message });
-      }
-
-      let title = String((req.body && req.body.title) || '').trim();
-      if (title.length > 20) return res.status(400).json({ error: '动态标题最多 20 个字' });
-
-      let mentions = [];
-      try {
-        mentions = await resolveMentions(req.user, account, req.body.mentions);
-      } catch (e) {
-        return res.status(e.status || 500).json({ error: e.message });
-      }
-      // 正文里 @到账号库成员的，补登记为提及（模板变量/人员槽位渲染出的 @ 不会自己进 mentions）
-      mentions = mergeLibraryMentions(text, store.listLibAccounts(), mentions, req.user.id);
-
-      // 内容类型 / 署名槽位（PRD F-Q5/Q6；标签功能已下线，任务改用模板区分）
-      const type = TASK_TYPES.includes(req.body.type) ? req.body.type : '原创';
-      const slotsR = resolveSlots(req.body, type, req.user.id);
-      if (slotsR.error) return res.status(400).json({ error: slotsR.error });
-
-      const job = {
-        id: genId('job'),
-        userId: req.user.id,
-        templateId: template.id,
-        templateName: template.name,
-        accountId: account.id,
-        accountName: account.uname || account.name,
-        text,
-        images: images.map((i) => ({ key: i.key, name: i.name || '', url: i.url || '' })),
-        topic,
-        title,
-        mentions,
-        type,
-        slots: slotsR.slots,
-        scheduledAt: when.toISOString(),
-        status: 'pending',
-        attempts: 0,
-        lastError: null,
-        publishedAt: null,
-        dynamicId: '',
-        dynamicUrl: '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
+    } else {
+      // 单条模式：使用原有方法，立即 save
       await store.addJob(job);
-      if (topic) pushRecentTopic(req.user.id, topic);
+      if (topic) pushRecentTopic(user.id, topic);
       await store.addLog(
         'info',
         `任务加入队列: ${template.name} -> ${job.accountName}，计划 ${when.toLocaleString('zh-CN')}`,
-        { jobId: job.id, userId: req.user.id }
+        { jobId: job.id, userId: user.id }
       );
+    }
+
+    return job;
+  }
+
+  // 静默更新近期话题（批量用，不触发 save）
+  function pushRecentTopicSilent(userId, topic) {
+    if (!topic || !topic.id || !topic.name) return;
+    const u = store.getUser(userId);
+    if (!u) return;
+    const list = (u.recentTopics || []).filter((t) => t.id !== topic.id);
+    list.unshift({ id: topic.id, name: topic.name });
+    u.recentTopics = list.slice(0, 8);
+    // 不调用 store.save()
+  }
+
+  router.post('/jobs', requireAuth, async (req, res, next) => {
+    try {
+      const job = await createJobFromInput(req.user, req.body, { deferred: false, batch: false });
       res.json({ job });
+    } catch (e) {
+      if (e.status) {
+        return res.status(e.status).json({ error: e.message });
+      }
+      next(e);
+    }
+  });
+
+  // ===================== 批量入队 =====================
+  router.post('/jobs/batch', requireAuth, async (req, res, next) => {
+    try {
+      const { items } = req.body || {};
+      if (!Array.isArray(items)) {
+        return res.status(400).json({ error: 'items 必须是数组' });
+      }
+      if (items.length > 50) {
+        return res.status(400).json({ error: '单次最多入队 50 条' });
+      }
+
+      const created = [];
+      const failed = [];
+
+      for (let index = 0; index < items.length; index++) {
+        try {
+          const job = await createJobFromInput(req.user, items[index], { deferred: true, batch: true });
+          created.push({ index, id: job.id, scheduledAt: job.scheduledAt, title: job.title });
+        } catch (e) {
+          failed.push({ index, error: e.message || '创建任务失败' });
+        }
+      }
+
+      // 批量入队路径仅此一次 save
+      store.save();
+
+      res.json({ created, failed });
     } catch (e) {
       next(e);
     }
