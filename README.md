@@ -26,7 +26,7 @@
 
 ## 快速开始
 
-要求 Node.js >= 18。
+要求 Node.js >= 20.9（部署基线 Node 20 / Alpine musl x64，目标容器必须实际转码验证）。
 
 ```bash
 npm install
@@ -93,6 +93,11 @@ docker compose up -d --build     # 更新代码后重建
 | `R2_BUCKET` | — | 存储桶名称 |
 | `R2_PUBLIC_BASE` | — | 公网访问前缀（r2.dev 或自定义域名），前端预览用 |
 | `R2_QUOTA_GB` | 10 | R2 存储配额（GB），仅用于图库页「存储剩余」展示 |
+| `THUMB_ENABLED` | 1 | 0 关闭并安全重定向原图，仅故障降级 |
+| `THUMB_CONCURRENCY` | 2 | 生成全过程并发，允许 1–2 |
+| `THUMB_CACHE_MAX_MB` | 512 | 派生缓存上限，1–4096 MiB |
+| `THUMB_CACHE_DAYS` | 30 | 未访问回收天数，1–365 |
+| `THUMB_FETCH_TIMEOUT_MS` | 10000 | 源读取/转码限时，100–10000 ms |
 
 > Docker 部署时请把凭据写在 `docker-compose.yml` 同目录的 `.env`（已 gitignore），
 > compose 会自动读取并注入。参考 `.env.example`。
@@ -203,8 +208,20 @@ docker compose up -d
 │   ├── reset.js           清空本地数据
 │   ├── bust-assets.js     更新静态资源版本号
 │   └── migrate-to-r2.js   本地图库迁移到 R2
-└── data/                  运行时生成（db.json + uploads/）
+└── data/                  运行时生成（db.json + uploads/ + thumbs/）
 ```
+
+## 图片缩略图与运维
+
+入库小图使用鉴权 `/api/thumb/<key>?w=240`（任务详情480），真实 WebP q80、EXIF转正、最长边 inside、不放大、保留透明、动画仅首帧。放大、发布、ZIP仍用完整原图；账号头像和 Danbooru 代理不变。源图超过50MiB/40MP、损坏或不支持格式受控降级；队列过载503不会重定向原图。默认2并发、64等待，sharp线程1；无自动预热。
+
+派生缓存为 `DATA_DIR/thumbs/v1/`，不写 db.json、不上传 R2。local 每次 stat；R2 每次 HEAD、冷缓存条件GET、暖缓存GET为零，但HEAD仍有费用/延迟。原图404不使用旧缓存。浏览器采用 private重验证/ETag；异常原图降级no-store。local手动覆盖若刻意保留全部时间戳，必须清缓存。清理按小时节流、每批最多100文件，旧源版本优先、30天及512MiB近似LRU；卷空间仍需监控，图库usage不包括派生缓存。
+
+清理工具 `node scripts/clear-thumbs.js --all` 默认dry-run；执行必须停服务，核实输出绝对根，再加 `--execute --confirm=<输出根>`。支持 `--old`（旧算法）与 `--orphans`（孤立sidecar/临时文件）。不删除uploads、db、R2对象或Danbooru。默认reset删除根data会连同thumbs清除，但自定义DATA_DIR需停服务后单独核实清理，reset不读取该变量。
+
+短时回滚：THUMB_ENABLED=0重启，授权仍保留。完整回滚旧镜像/代码时恢复旧src并把静态资源版本继续递增（例如22，不降回20），提示打开页面刷新；不恢复旧db覆盖新任务，无数据迁移。
+
+sharp精确0.34.5，lock保留Windows及linuxmusl optional，Docker安装禁止omit optional；不复制Windows node_modules。当前镜像标签是待测试机实际验证的 `node:20.20.0-alpine3.23`，本机无Docker，musl转码、镜像体积增量、CPU/架构和离线save/load均待部署验证，不能据Windows成功宣布通过。部署先R2测试机、再local少量页面；正式279图压测与授权B站发布留人工验收。离线部署建议联网CI先构建/转码后save/load；离线重建需预备基础镜像、全部锁定npm包及optional缓存并显式offline验证，无物料必须失败。
 
 ## 技术说明
 

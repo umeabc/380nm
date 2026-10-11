@@ -91,6 +91,36 @@ class LocalStorage {
     }
     return total;
   }
+  // 只读缩略接口：真实路径必须仍在上传根内，拒绝符号链接逃逸。
+  async statForThumbnail(key) {
+    require('../thumb-config').validateKey(key);
+    const root = await fsp.realpath(this.dir);
+    const file = await fsp.realpath(this._path(key));
+    if (!file.startsWith(root + path.sep)) throw Object.assign(new Error('路径越界'), { code: 'BAD_KEY' });
+    const st = await fsp.stat(file);
+    if (!st.isFile()) throw Object.assign(new Error('源不存在'), { code: 'ENOENT' });
+    return { size: st.size, version: `${st.size}:${st.mtimeMs}:${st.ctimeMs}` };
+  }
+
+  async readForThumbnail(key, { signal, maxBytes } = {}) {
+    const meta = await this.statForThumbnail(key);
+    if (meta.size > maxBytes) throw Object.assign(new Error('源图超限'), { code: 'TOO_LARGE' });
+    const root = await fsp.realpath(this.dir);
+    const file = await fsp.realpath(this._path(key));
+    if (!file.startsWith(root + path.sep)) throw Object.assign(new Error('路径越界'), { code: 'BAD_KEY' });
+    const handle = await fsp.open(file, 'r');
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.size > maxBytes) { await handle.close(); throw Object.assign(new Error('源图超限或非文件'), { code: 'TOO_LARGE' }); }
+    try {
+      const chunks = []; let size = 0;
+      for await (const chunk of handle.createReadStream({ signal, autoClose: false })) {
+        size += chunk.length;
+        if (size > maxBytes) throw Object.assign(new Error('源图超限'), { code: 'TOO_LARGE' });
+        chunks.push(chunk);
+      }
+      return { buffer: Buffer.concat(chunks), version: meta.version };
+    } finally { await handle.close(); }
+  }
 }
 
 module.exports = { LocalStorage };

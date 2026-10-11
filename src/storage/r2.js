@@ -112,6 +112,36 @@ class R2Storage {
     usageCachedAt = Date.now();
     return usageCache;
   }
+  // 独立只读接口，不改变发布链路的 get；网络由真实 AbortSignal 限时。
+  async statForThumbnail(key, { signal } = {}) {
+    require('../thumb-config').validateKey(key);
+    const { HeadObjectCommand } = require('@aws-sdk/client-s3');
+    const own = AbortSignal.timeout(10000);
+    const res = await this.client.send(new HeadObjectCommand({ Bucket: this.cfg.bucket, Key: key }),
+      { abortSignal: signal ? AbortSignal.any([signal, own]) : own });
+    return { size: res.ContentLength, etag: res.ETag, contentType: res.ContentType,
+      version: JSON.stringify([res.ETag, res.LastModified, res.ContentLength, res.VersionId]) };
+  }
+
+  async readForThumbnail(key, { signal, ifMatch, maxBytes } = {}) {
+    require('../thumb-config').validateKey(key);
+    const { GetObjectCommand } = require('@aws-sdk/client-s3');
+    const res = await this.client.send(new GetObjectCommand({ Bucket: this.cfg.bucket, Key: key, IfMatch: ifMatch }), { abortSignal: signal });
+    const body = res.Body;
+    const abort = () => body.destroy?.(Object.assign(new Error('读取中止'), { code: 'ABORT_ERR' }));
+    signal?.addEventListener('abort', abort, { once: true });
+    try {
+      if (signal?.aborted) abort();
+      if (res.ContentLength > maxBytes) throw Object.assign(new Error('源图超限'), { code: 'TOO_LARGE' });
+      const chunks = []; let size = 0;
+      for await (const chunk of body) {
+        size += chunk.length;
+        if (size > maxBytes) throw Object.assign(new Error('源图超限'), { code: 'TOO_LARGE' });
+        chunks.push(Buffer.from(chunk));
+      }
+      return { buffer: Buffer.concat(chunks), contentType: res.ContentType };
+    } finally { signal?.removeEventListener('abort', abort); body.destroy?.(); }
+  }
 }
 
 module.exports = { R2Storage };

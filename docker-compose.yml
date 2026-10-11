@@ -18,5 +18,11 @@ services:
       - R2_SECRET_ACCESS_KEY=${R2_SECRET_ACCESS_KEY:-}
       - R2_BUCKET=${R2_BUCKET:-}
       - R2_PUBLIC_BASE=${R2_PUBLIC_BASE:-}
+      # 缩略默认开启，关闭仅用于故障降级
+      - THUMB_ENABLED=${THUMB_ENABLED:-1}
+      - THUMB_CONCURRENCY=${THUMB_CONCURRENCY:-2}
+      - THUMB_CACHE_MAX_MB=${THUMB_CACHE_MAX_MB:-512}
+      - THUMB_CACHE_DAYS=${THUMB_CACHE_DAYS:-30}
+      - THUMB_FETCH_TIMEOUT_MS=${THUMB_FETCH_TIMEOUT_MS:-10000}
     volumes:
       - ./data:/app/data
