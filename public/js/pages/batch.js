@@ -292,6 +292,7 @@
       selectedImages: [],
       credit: '',
       title: '',
+      manualTitle: false, // 手动标题在重排时保持不变
       scheduledAt: '',
       variables: {},
       topic: state.config.topic,
@@ -447,7 +448,7 @@
       readyRows.forEach((row, i) => {
         if (!row.manualTime) {
           row.scheduledAt = result.slots[i].scheduledAt;
-          row.title = result.slots[i].title;
+          if (!row.manualTitle) row.title = result.slots[i].title;
         }
       });
 
@@ -482,6 +483,10 @@
   }
 
   function renderTable() {
+    closeTimePopover();
+    detectCollisions();
+    // 顺序=时间顺序；改时间即调整顺序，不提供按钮重排入口。
+    state.rows.sort((a, b) => (a.scheduledAt || 'z').localeCompare(b.scheduledAt || 'z'));
     const box = $('#batch-state');
     const summary = $('#result-summary');
     const actions = $('#result-actions');
@@ -512,6 +517,7 @@
       '</tr></thead><tbody>' +
       state.rows.map((row, i) => renderRow(row, i)).join('') +
       '</tbody></table></div>';
+    bindRowEvents(box);
   }
 
   function renderRow(row, i) {
@@ -527,16 +533,165 @@
     const dt = row.scheduledAt ? new Date(row.scheduledAt) : null;
     const timeStr = dt ? `${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')} ${String(dt.getHours()).padStart(2, '0')}:00` : '解析后生成';
 
-    return `<tr class="batch-row">
+    const editable = row.status === 'ready' || row.status === 'enqueue_failed';
+    const timeClass = row.collision ? 'is-collision' : dt && state.config.avoid.includes(dt.getHours()) ? 'is-avoid' : '';
+    return `<tr class="batch-row ${row.collision ? 'has-collision' : ''}" data-row-id="${esc(row.id)}">
       <td class="batch-cell">${i + 1}</td>
       <td class="batch-cell">${thumb}</td>
-      <td class="batch-cell batch-title">${esc(row.title || '解析后生成')}</td>
-      <td class="batch-cell"><span class="pill gray batch-time-badge">${timeStr}</span></td>
+      <td class="batch-cell batch-title" ${editable ? 'title="双击修改标题" data-edit-title' : ''}>${esc(row.title || '解析后生成')}</td>
+      <td class="batch-cell"><span class="batch-time-control"><span class="pill gray batch-time-badge ${timeClass}">${timeStr}</span>${editable && dt ? '<button type="button" class="icon-btn sm batch-time-edit" aria-label="修改计划时间"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>' : ''}</span></td>
       <td class="batch-cell batch-credit">${esc(row.credit).replace(/\n/g, '<br>')}</td>
       <td class="batch-cell">${row.images.length ? `${row.selectedImages.length} 张` : '—'}</td>
       <td class="batch-cell">${statusMap[row.status] || ''}${row.jobError ? '<div class="batch-row-error">' + esc(row.jobError) + '</div>' : ''}</td>
-      <td class="batch-cell batch-row-actions">${row.status === 'ready' ? '上移 / 下移 / 删除' : row.status === 'queued' ? `<a href="/queue/${row.jobId}" class="link-btn">查看任务</a>` : ''}</td>
-    </tr>`;
+      <td class="batch-cell batch-row-actions"><button type="button" class="btn sm batch-edit" ${editable ? '' : 'disabled'}>修改动态</button><button type="button" class="icon-btn danger batch-delete" aria-label="删除">${icon('trash')}</button></td>
+    </tr>${row.editorOpen && editable ? renderRowEditor(row) : ''}`;
+  }
+
+  // 保存直接写入发布使用的 row.title，手动标题不再自动生成。
+  function saveTitle(row, value) {
+    row.title = value.slice(0, 20);
+    row.manualTitle = true;
+  }
+
+  function editTitle(row, cell) {
+    if (cell.querySelector('input')) return;
+    cell.innerHTML = `<input class="ctl batch-title-input" maxlength="20" aria-label="标题" value="${esc(row.title)}"><span class="batch-title-count"></span>`;
+    const input = cell.querySelector('input');
+    const count = cell.querySelector('.batch-title-count');
+    const update = () => { count.textContent = `${input.value.length}/20`; };
+    let finished = false;
+    const finish = (save) => {
+      if (finished) return;
+      finished = true;
+      if (save) saveTitle(row, input.value);
+      renderTable();
+    };
+    input.addEventListener('input', update);
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === 'Escape') {
+        e.preventDefault();
+        finish(e.key === 'Enter');
+      }
+    });
+    update();
+    input.focus();
+    input.select();
+  }
+
+  // 时间选项包含避让点与占用点，允许用户主动选择撞点。
+  function timeOptions(row) {
+    const dt = new Date(row.scheduledAt);
+    const date = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    const options = [];
+    for (let h = Number(state.config.start.slice(0, 2)); h <= Number(state.config.end.slice(0, 2)); h++) {
+      const time = `${String(h).padStart(2, '0')}:00`;
+      const slot = BatchSchedule.plan({ N: 1, date, start: time, end: time, prefix: state.config.prefix }).slots[0];
+      const occupied = state.rows.some(r => r !== row && r.scheduledAt === slot.scheduledAt);
+      options.push({ ...slot, label: `${time}${state.config.avoid.includes(h) ? ' · 避让点' : ''}${occupied ? ' · 已被其他行占用' : ''}` });
+    }
+    return options;
+  }
+
+  function detectCollisions() {
+    const counts = new Map();
+    const editable = r => r.status === 'ready' || r.status === 'enqueue_failed';
+    state.rows.forEach(r => { if (editable(r) && r.scheduledAt) counts.set(r.scheduledAt, (counts.get(r.scheduledAt) || 0) + 1); });
+    state.rows.forEach(r => { r.collision = editable(r) && !!r.scheduledAt && counts.get(r.scheduledAt) > 1; });
+    const warn = $('#collision-warn');
+    warn.style.display = state.rows.some(r => r.collision) ? '' : 'none';
+    warn.textContent = '存在计划时间撞点（已标黄），仍可入队；可修改时间错开。';
+  }
+
+  function changeTime(row, slot) {
+    row.scheduledAt = slot.scheduledAt;
+    row.manualTime = slot.scheduledAt;
+    if (!row.manualTitle) row.title = slot.title;
+    detectCollisions();
+  }
+
+  let timePopover = null;
+  let popoverAnchor = null;
+  function closeTimePopover() {
+    if (timePopover) timePopover.remove();
+    timePopover = null;
+    popoverAnchor = null;
+  }
+
+  function openTimePopover(row, anchor) {
+    closeTimePopover();
+    const options = timeOptions(row);
+    const panel = document.createElement('div');
+    panel.className = 'batch-time-popover';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', '修改计划时间');
+    panel.innerHTML = options.map((slot, i) => `<button type="button" class="batch-time-option" data-slot="${i}">${esc(slot.label)}</button>`).join('');
+    panel.addEventListener('click', e => {
+      const btn = e.target.closest('[data-slot]');
+      if (!btn) return;
+      changeTime(row, options[Number(btn.dataset.slot)]);
+      renderTable();
+    });
+    document.body.appendChild(panel);
+    const rect = anchor.getBoundingClientRect();
+    panel.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 252))}px`;
+    panel.style.top = `${Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - panel.offsetHeight - 8))}px`;
+    timePopover = panel;
+    popoverAnchor = anchor;
+    panel.querySelector('button')?.focus();
+  }
+
+  // 单一浮层入口；外部点击、Esc 和选中均关闭。
+  document.addEventListener('click', e => {
+    if (timePopover && !timePopover.contains(e.target) && !popoverAnchor.contains(e.target)) closeTimePopover();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeTimePopover(); });
+
+  function renderRowEditor(row) {
+    return `<tr class="batch-editor-row" data-editor-id="${esc(row.id)}"><td colspan="8"><div class="batch-row-editor">
+      <label>标题 <input class="ctl" data-field="title" maxlength="20" value="${esc(row.title)}"></label>
+      <label>正文 <textarea class="ctl" data-field="body">${esc(row.body ?? row.credit)}</textarea></label>
+      <label>话题 <input class="ctl" data-field="topic" value="${esc(row.topic?.name || '')}"></label>
+      <div class="batch-editor-images">${row.images.map((img, i) => `<label><input type="checkbox" data-image="${i}" ${row.selectedImages.includes(img) ? 'checked' : ''}><img class="batch-thumb" src="${esc(img.url)}" referrerpolicy="no-referrer" alt="配图 ${i + 1}"></label>`).join('')}</div>
+    </div></td></tr>`;
+  }
+
+  function bindRowEvents(box) {
+    box.querySelectorAll('[data-row-id]').forEach(el => {
+      const row = state.rows.find(r => r.id === el.dataset.rowId);
+      el.querySelector('[data-edit-title]')?.addEventListener('dblclick', e => editTitle(row, e.currentTarget));
+      el.querySelector('.batch-time-edit')?.addEventListener('click', e => openTimePopover(row, e.currentTarget));
+      el.querySelector('.batch-edit').addEventListener('click', () => { row.editorOpen = !row.editorOpen; renderTable(); });
+      el.querySelector('.batch-delete').addEventListener('click', () => {
+        state.rows = state.rows.filter(r => r !== row);
+        replan();
+        renderTable();
+      });
+    });
+    box.querySelectorAll('[data-editor-id]').forEach(el => {
+      const row = state.rows.find(r => r.id === el.dataset.editorId);
+      el.querySelector('[data-field="title"]').addEventListener('input', e => saveTitle(row, e.target.value));
+      el.querySelector('[data-field="body"]').addEventListener('input', e => { row.body = e.target.value; });
+      el.querySelector('[data-field="topic"]').addEventListener('input', e => { row.topic = e.target.value.trim() ? { name: e.target.value.trim() } : null; });
+      el.querySelectorAll('[data-image]').forEach(input => input.addEventListener('change', () => {
+        const selected = Array.from(el.querySelectorAll('[data-image]:checked')).map(item => row.images[Number(item.dataset.image)]);
+        const tpl = state.templates.find(t => t.id === state.config.templateId);
+        if (selected.length > (tpl.maxImages || 9)) { input.checked = false; toast('超过模板图片上限', 'error'); return; }
+        row.selectedImages = selected;
+      }));
+    });
+  }
+
+  // 提交统一使用行上最新的标题、正文和配图。
+  function buildJobItem(row) {
+    const tpl = state.templates.find(t => t.id === state.config.templateId);
+    const mainVar = (tpl.variables || []).find(v => v.type === 'textarea');
+    return {
+      templateId: state.config.templateId, accountId: state.config.accountId,
+      variables: { ...row.variables, [mainVar.key]: row.body ?? row.credit },
+      images: row.selectedImages, topic: row.topic, title: row.title,
+      mentions: [], type: '原创', scheduledAt: row.scheduledAt
+    };
   }
 
   function showConfirm() {
@@ -561,20 +716,7 @@
     $('#confirm-mask').style.display = 'none';
     state.phase = 'submitting';
 
-    const tpl = state.templates.find(t => t.id === state.config.templateId);
-    const mainVar = (tpl.variables || []).find(v => v.type === 'textarea');
-
-    const items = readyRows.map(row => ({
-      templateId: state.config.templateId,
-      accountId: state.config.accountId,
-      variables: { [mainVar.key]: row.credit },
-      images: row.selectedImages,
-      topic: row.topic,
-      title: row.title,
-      mentions: [],
-      type: '原创',
-      scheduledAt: row.scheduledAt
-    }));
+    const items = readyRows.map(buildJobItem);
 
     try {
       const res = await api('POST', '/api/jobs/batch', { items });
