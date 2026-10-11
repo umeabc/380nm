@@ -521,7 +521,7 @@
   }
 
   function renderRow(row, i) {
-    const thumb = row.images[0] ? `<img src="${esc(row.images[0].url)}" class="batch-thumb" referrerpolicy="no-referrer">` : '';
+    const thumb = row.images[0] ? `<img src="${esc(App.imageSrc(row.images[0], 240))}" class="batch-thumb" referrerpolicy="no-referrer">` : '';
     const statusMap = {
       pending: '<span class="pill gray">等待解析</span>',
       parsing: '<span class="pill blue">解析中</span>',
@@ -652,7 +652,7 @@
       <label>标题 <input class="ctl" data-field="title" maxlength="20" value="${esc(row.title)}"></label>
       <label>正文 <textarea class="ctl" data-field="body">${esc(row.body ?? row.credit)}</textarea></label>
       <label>话题 <input class="ctl" data-field="topic" value="${esc(row.topic?.name || '')}"></label>
-      <div class="batch-editor-images">${row.images.map((img, i) => `<label><input type="checkbox" data-image="${i}" ${row.selectedImages.includes(img) ? 'checked' : ''}><img class="batch-thumb" src="${esc(img.url)}" referrerpolicy="no-referrer" alt="配图 ${i + 1}"></label>`).join('')}</div>
+      <div class="batch-editor-images">${row.images.map((img, i) => `<label><input type="checkbox" data-image="${i}" ${row.selectedImages.includes(img) ? 'checked' : ''}><img class="batch-thumb" src="${esc(App.imageSrc(img, 240))}" referrerpolicy="no-referrer" alt="配图 ${i + 1}"></label>`).join('')}</div>
     </div></td></tr>`;
   }
 

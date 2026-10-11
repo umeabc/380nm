@@ -502,7 +502,16 @@ window.App = (function () {
     if (cfg.ready) await cfg.ready(user);
   }
 
+  // 仅生成展示地址，绝不写回发布/导出使用的原图对象。
+  function imageSrc(image, w = 240) {
+    if (![240, 480].includes(w)) throw new Error('缩略尺寸仅支持240/480');
+    const url = image && image.url || '';
+    if (!image || !image.key || /^(blob:|data:)/i.test(url)) return url;
+    return '/api/thumb/' + image.key.split('/').map(encodeURIComponent).join('/') + '?w=' + w;
+  }
+
   return {
+    imageSrc,
     $, $$, icon, esc, pad, fmtTime, fmtShort, toLocalInput, fmtDuration, snippet, renderText, debounce,
     api, toast, state, NAV, renderShell, refreshBadge, closeDrawer, openPwModal,
     publishedImageMap, pubTip, pendingImageMap, pendTip, uploadImages, boot

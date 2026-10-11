@@ -320,7 +320,7 @@
   function renderSelected() {
     $('#sel-strip').innerHTML = state.selected.map((img, i) =>
       `<div class="cell on" data-rm="${esc(img.key)}" title="点击移除">
-         <img referrerpolicy="no-referrer" src="${esc(img.url)}" alt=""><span class="ord">${i + 1}</span>
+         <img referrerpolicy="no-referrer" src="${esc(App.imageSrc(img, 240))}" alt=""><span class="ord">${i + 1}</span>
        </div>`).join('');
   }
   function renderImageGrid() {
@@ -341,7 +341,7 @@
       const pub = pubMap[img.key];
       return `<div class="cell ${selKeys.includes(img.key) ? 'on' : ''} ${pub ? 'pub' : ''}" data-key="${esc(img.key)}"
            title="${esc(img.name)}${pubTip(pub)}">
-         <img referrerpolicy="no-referrer" src="${esc(img.url)}" alt="${esc(img.name)}" loading="lazy">
+         <img referrerpolicy="no-referrer" src="${esc(App.imageSrc(img, 240))}" alt="${esc(img.name)}" loading="lazy">
          <span class="ord">${selKeys.indexOf(img.key) + 1 || ''}</span>
          ${pub ? `<span class="pub-badge">已发布</span>` : ''}
        </div>`;
@@ -456,7 +456,7 @@
         <button class="link-btn" id="btnClearFetch">清除</button>
       </div>
       <div class="fr-main">
-        <div class="thumb ${w.platform}">${firstImg ? `<img referrerpolicy="no-referrer" src="${esc(firstImg.url)}" alt="">` : (isX ? 'X' : 'P')}</div>
+        <div class="thumb ${w.platform}">${firstImg ? `<img referrerpolicy="no-referrer" src="${esc(App.imageSrc(firstImg, 240))}" alt="">` : (isX ? 'X' : 'P')}</div>
         <div class="fr-meta">
           <div class="fr-row1">
             <span class="plat-badge ${w.platform}">${PLATFORM_LABEL[w.platform] || ''}</span>

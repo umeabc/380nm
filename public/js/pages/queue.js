@@ -155,7 +155,7 @@
       ? `<div class="t-imgs">${imgs.slice(0, 4).map((im, i) => `
           <button class="t-thumb" type="button" data-preview="${j.id}" data-idx="${i}"
                   title="预览配图（共 ${imgs.length} 张）">
-            <img referrerpolicy="no-referrer" src="${esc(im.url)}" alt="" loading="lazy">
+            <img referrerpolicy="no-referrer" src="${esc(App.imageSrc(im, 240))}" alt="" loading="lazy">
             ${i === 3 && imgs.length > 4 ? `<span class="t-more">+${imgs.length - 4}</span>` : ''}
           </button>`).join('')}
           <span class="t-imgs-n">共 ${imgs.length} 张</span>
@@ -305,7 +305,7 @@
       `${who ? who + ' · ' : ''}配图 ${pv.idx + 1} / ${pv.images.length}${im.name ? ' · ' + im.name : ''}`;
     document.getElementById('pv-thumbs').innerHTML = pv.images.map((x, i) =>
       `<button class="pv-thumb ${i === pv.idx ? 'on' : ''}" type="button" data-pv-idx="${i}" title="${esc(x.name || '')}">
-        <img referrerpolicy="no-referrer" src="${esc(x.url)}" alt="" loading="lazy">
+        <img referrerpolicy="no-referrer" src="${esc(App.imageSrc(x, 240))}" alt="" loading="lazy">
       </button>`).join('');
   }
   function closePreview() {

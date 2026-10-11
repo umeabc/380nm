@@ -95,7 +95,7 @@
             <div class="card-h" style="border:none;background:none;padding:0 0 10px">配图（${imgs.length}）</div>
             ${imgs.length ? `<div class="img-grid">${imgs.map((i) => {
               const pub = pubMap[i.key];
-              return `<a class="cell ${pub ? 'pub' : ''}" href="${esc(i.url)}" target="_blank" rel="noopener" title="${esc(i.name || '')}${pubTip(pub)}"><img referrerpolicy="no-referrer" src="${esc(i.url)}" alt="" loading="lazy">${pub ? `<span class="pub-badge">已发布</span>` : ''}</a>`;
+              return `<a class="cell ${pub ? 'pub' : ''}" href="${esc(i.url)}" target="_blank" rel="noopener" title="${esc(i.name || '')}${pubTip(pub)}"><img referrerpolicy="no-referrer" src="${esc(App.imageSrc(i, 480))}" alt="" loading="lazy">${pub ? `<span class="pub-badge">已发布</span>` : ''}</a>`;
             }).join('')}</div>`
       : '<div class="empty">无配图</div>'}
           </div>
@@ -284,7 +284,7 @@
         const pub = pubMap[img.key];
         return `<div class="cell ${keys().includes(img.key) ? 'on' : ''} ${pub ? 'pub' : ''}" data-ekey="${esc(img.key)}"
              title="${esc(img.name)}${pubTip(pub)}">
-           <img referrerpolicy="no-referrer" src="${esc(img.url)}" alt="" loading="lazy">
+           <img referrerpolicy="no-referrer" src="${esc(App.imageSrc(img, 240))}" alt="" loading="lazy">
            <span class="ord">${keys().indexOf(img.key) + 1 || ''}</span>
            ${pub ? `<span class="pub-badge">已发布</span>` : ''}
          </div>`;

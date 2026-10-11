@@ -122,7 +122,7 @@
       const picked = state.selectedKeys.has(img.key);
       return `<div class="cell ${pub ? 'pub' : ''} ${pend ? 'pending' : ''} ${picked ? 'picked' : ''}" data-lib="${esc(img.key)}"
            title="${esc(img.name)}（${fmtTime(img.createdAt)}${pendTip(pend)}${pubTip(pub)}）">
-         <img referrerpolicy="no-referrer" src="${esc(img.url)}" alt="" loading="lazy">
+         <img referrerpolicy="no-referrer" src="${esc(App.imageSrc(img, 240))}" alt="" loading="lazy">
          <span class="selbox" data-check="${esc(img.key)}" title="选择"></span>
          ${pub ? `<span class="pub-badge">已发布${pub.count > 1 ? ' ×' + pub.count : ''}</span>` : ''}
          ${pend ? `<span class="pend-badge">待发布${pend.count > 1 ? ' ×' + pend.count : ''}</span>` : ''}

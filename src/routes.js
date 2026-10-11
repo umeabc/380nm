@@ -20,6 +20,9 @@ const { buildZip } = require('./zip');
 const { cookieErrorText } = require('./cookie-monitor');
 const { mergeLibraryMentions } = require('./mentions');
 
+const { thumbnailConfig, validateKey } = require('./thumb-config');
+const { createThumbnailService } = require('./thumbs');
+
 const MAX_IMAGES = 9;
 const MAX_IMPORT_IMAGES = 30;
 const COOKIE = 'sid';
@@ -66,6 +69,57 @@ module.exports = function createRoutes(ctx) {
   const router = express.Router();
 
   router.use(attachUser(store));
+
+  // 派生缓存不写 Store，鉴权和源存在性检查始终早于磁盘命中。
+  const thumbConfig = thumbnailConfig();
+  const thumbs = createThumbnailService({ storage, config: thumbConfig });
+  router.get('/thumb/*', requireAuth, async (req, res) => {
+    const controller = new AbortController();
+    const disconnect = () => { if (!res.writableFinished) controller.abort(); };
+    res.on('close', disconnect);
+    let key, record;
+    const fallback = () => {
+      if (storage.name === 'local') return '/uploads/' + key.split('/').map(encodeURIComponent).join('/');
+      try {
+        const base = new URL(storage.cfg.publicBase);
+        if (!['http:', 'https:'].includes(base.protocol) || base.username || base.password || base.search || base.hash) return null;
+        const expected = base.href.replace(/\/+$/, '') + '/' + key.split('/').map(encodeURIComponent).join('/');
+        return record.url && new URL(record.url).href === expected ? expected : null;
+      } catch (e) { return null; }
+    };
+    try {
+      key = validateKey(req.params[0]);
+      if (Object.keys(req.query).some(k => k !== 'w') || (req.query.w !== undefined && !['240', '480'].includes(req.query.w))) {
+        return res.status(400).json({ error: '非法缩略参数' });
+      }
+      const readable = r => r.userId === req.user.id || req.user.role === 'admin';
+      record = store.listImages().find(i => i.key === key && readable(i));
+      if (!record) {
+        for (const job of store.listJobs().filter(readable)) {
+          record = (job.images || []).find(i => i.key === key); if (record) break;
+        }
+      }
+      if (!record) return res.status(404).json({ error: '图片不存在' });
+      const sourceMeta = await thumbs.metadata(key, controller.signal);
+      if (!thumbConfig.enabled) {
+        const url = fallback();
+        return url ? res.set('Cache-Control', 'no-store').redirect(302, url) : res.status(502).json({ error: '无安全原图地址' });
+      }
+      const result = await thumbs.get({ key, width: Number(req.query.w || 240), sourceMeta, signal: controller.signal });
+      res.set({ 'Content-Type': 'image/webp', 'X-Content-Type-Options': 'nosniff',
+        'Cache-Control': 'private, max-age=0, must-revalidate', 'Vary': 'Cookie', 'ETag': result.etag });
+      if ((req.headers['if-none-match'] || '').split(',').map(s => s.trim().replace(/^W\//, '')).includes(result.etag) || req.headers['if-none-match'] === '*') return res.status(304).end();
+      res.sendFile(result.file, err => { if (err && !res.headersSent && !res.destroyed) res.status(503).end(); });
+    } catch (e) {
+      if (res.destroyed) return;
+      const code = e.code || e.name;
+      if (code === 'BAD_KEY') return res.status(400).json({ error: '非法图片 key' });
+      if (['ENOENT', 'NoSuchKey', 'NoSuchObject', 'NotFound'].includes(code) || e.$metadata?.httpStatusCode === 404) return res.status(404).json({ error: '图片不存在' });
+      if (['OVERLOAD', 'ABORT_ERR'].includes(code)) return res.set('Retry-After', '5').status(503).json({ error: '缩略服务繁忙' });
+      const url = record && fallback();
+      return url ? res.set('Cache-Control', 'no-store').redirect(302, url) : res.status(502).json({ error: '缩略生成失败' });
+    }
+  });
 
   router.get('/health', (req, res) => {
     res.json({ ok: true, time: new Date().toISOString() });
