@@ -22,6 +22,9 @@ const { mergeLibraryMentions } = require('./mentions');
 
 const { thumbnailConfig, validateKey } = require('./thumb-config');
 const { createThumbnailService } = require('./thumbs');
+const { AccountCredentialsLock } = require('./account-credentials-lock');
+const { validateBiliCredentials, PassportError, maskSecret, maskAccount } = require('./bilibili-passport');
+const { mergedNavStatus, passportFailureMessage } = require('./cookie-refresh');
 
 const MAX_IMAGES = 9;
 const MAX_IMPORT_IMAGES = 30;
@@ -32,14 +35,7 @@ const DANBOORU_THUMB_TTL_MS = 24 * 60 * 60 * 1000;
 // 全站导入设置的机密字段
 const SETTING_SECRETS = ['pixivSession', 'twitterAuth', 'twitterCt0'];
 
-function maskSecret(s) {
-  if (!s) return '';
-  return s.length <= 12 ? s.slice(0, 4) + '****' : s.slice(0, 8) + '****' + s.slice(-4);
-}
-
-function maskAccount(a) {
-  return { ...a, sessdata: maskSecret(a.sessdata), bili_jct: maskSecret(a.bili_jct) };
-}
+// maskSecret / maskAccount 是全站唯一实现，位于 bilibili-passport（扫码与路由共用同一 DTO）。
 
 function validateTemplate(body) {
   const { name, content, variables = [], maxImages } = body || {};
@@ -65,7 +61,8 @@ function validateTemplate(body) {
 }
 
 module.exports = function createRoutes(ctx) {
-  const { store, storage, bili, scheduler } = ctx;
+  const { store, storage, bili, scheduler, qrLogin, cookieRefresh } = ctx;
+  const credentialsLock = ctx.credentialsLock || new AccountCredentialsLock();
   const router = express.Router();
 
   router.use(attachUser(store));
@@ -290,31 +287,60 @@ module.exports = function createRoutes(ctx) {
   });
 
   // ===================== 账号（B站 Cookie，按用户隔离） =====================
+  const accountWrite = (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    // 同源判定只比 host：反代终止 TLS 时 req.protocol 与浏览器 Origin 的 scheme 可能不同，
+    // 比 scheme 会误杀合法请求；跨站伪造的 Origin 一定落在别的主机名上。
+    const origin = req.get('origin');
+    let sameOrigin = true;
+    if (origin) { try { sameOrigin = new URL(origin).host === req.get('host'); } catch (e) { sameOrigin = false; } }
+    if (!req.is('application/json') || !sameOrigin || req.get('sec-fetch-site') === 'cross-site') return res.status(400).json({ error: '账号操作必须同源JSON请求' });
+    next();
+  };
+  const accountError = (res, e) => {
+    // 身份不符 = 409（扫码账号与目标账号/凭据不一致），超时 504，nav 业务错误 400，其余上游 502
+    const status = e.status || (e.kind === 'identity' ? 409 : e.kind === 'timeout' ? 504 : e.stage === 'nav' && e.kind !== 'network' ? 400 : 502);
+    const message = e instanceof PassportError ? passportFailureMessage(e) : e.status ? e.message : '账号操作失败，请稍后重试';
+    return res.status(status).json({ error: message, ...(e instanceof PassportError ? { kind: e.kind, stage: e.stage, code: e.code } : {}) });
+  };
+  router.post('/accounts/qrcode', requireAuth, accountWrite, async (req, res) => {
+    try {
+      const body = req.body || {};
+      if (Object.keys(body).some(k => !['name', 'accountId'].includes(k)) || (body.name !== undefined && (typeof body.name !== 'string' || body.name.length > 100)) || (body.accountId !== undefined && typeof body.accountId !== 'string')) return res.status(400).json({ error: '非法扫码参数' });
+      if (body.accountId) { const a = store.getAccount(body.accountId); if (!a || !canTouch(a, req)) return res.status(404).json({ error: '账号不存在' }); }
+      if (!qrLogin) return res.status(503).json({ error: '扫码服务未启用' });
+      res.json(await qrLogin.generate({ userId: req.user.id, name: body.name || '', accountId: body.accountId }));
+    } catch (e) { accountError(res, e); }
+  });
+  router.get('/accounts/qrcode/:loginId/poll', requireAuth, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try {
+      if (!qrLogin) return res.status(503).json({ error: '扫码服务未启用' });
+      const result = await qrLogin.poll({ userId: req.user.id, loginId: req.params.loginId });
+      res.json(result); // QR服务只缓存并返回已脱敏DTO，不缓存原始凭据结果。
+    } catch (e) { accountError(res, e); }
+  });
   router.get('/accounts', requireAuth, (req, res) => {
+    res.set('Cache-Control', 'no-store');
     res.json({ accounts: store.listAccounts().filter(scopeFilter(req)).map(maskAccount) });
   });
 
-  router.post('/accounts', requireAuth, async (req, res, next) => {
+  router.post('/accounts', requireAuth, accountWrite, async (req, res, next) => {
     try {
       const { name, sessdata, bili_jct } = req.body || {};
       if (!sessdata || !bili_jct) {
         return res.status(400).json({ error: 'SESSDATA 和 bili_jct 均为必填' });
       }
-      let info;
-      try {
-        info = await bili.getMyInfo(String(sessdata).trim());
-      } catch (e) {
-        return res.status(502).json({ error: '校验失败（无法连接B站）: ' + e.message });
-      }
-      if (info.code !== 0) {
-        return res.status(400).json({ error: `Cookie 无效 (code ${info.code}): ${info.message || ''}` });
-      }
-      const d = info.data || {};
+      let profile;
+      try { profile = await validateBiliCredentials(bili, { sessdata: String(sessdata).trim(), bili_jct: String(bili_jct).trim() }); }
+      catch (e) { return accountError(res, e); }
+      const d = { mid: profile.uid, uname: profile.uname, face: profile.avatar };
       const account = {
         id: genId('acc'),
         userId: req.user.id,
         name: (name || '').trim() || d.uname || '未命名账号',
         uid: d.mid,
+        mid: String(d.mid),
         uname: d.uname,
         avatar: d.face || '',
         sessdata: String(sessdata).trim(),
@@ -330,80 +356,61 @@ module.exports = function createRoutes(ctx) {
     }
   });
 
-  router.post('/accounts/:id/reverify', requireAuth, async (req, res, next) => {
-    try {
+  router.post('/accounts/:id/reverify', requireAuth, async (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    try { await credentialsLock.runExclusive(req.params.id, async () => {
       const acc = store.getAccount(req.params.id);
       if (!acc || !canTouch(acc, req)) return res.status(404).json({ error: '账号不存在' });
-      let info;
-      try {
-        info = await bili.getMyInfo(acc.sessdata);
-      } catch (e) {
-        return res.status(502).json({ error: '校验失败（无法连接B站）: ' + e.message });
+      let profile;
+      try { profile = await validateBiliCredentials(bili, acc); }
+      catch (e) {
+        await store.updateAccount(acc.id, { cookieStatus: mergedNavStatus(acc, { code: e.code, message: passportFailureMessage(e) }, new Date().toISOString()) });
+        return accountError(res, e);
       }
-      const checkedAt = new Date().toISOString();
-      if (info.code !== 0) {
-        // 记录失败状态，账号一览会以红字展示具体报错
-        await store.updateAccount(acc.id, {
-          cookieStatus: { ok: false, code: Number(info.code) || null, message: cookieErrorText(info), checkedAt }
-        });
-        return res.status(400).json({ error: `Cookie 可能已失效 (code ${info.code}): ${info.message || ''}` });
-      }
-      const d = info.data || {};
-      await store.updateAccount(acc.id, {
-        uid: d.mid, uname: d.uname, avatar: d.face || '',
-        cookieStatus: { ok: true, code: 0, message: '', checkedAt }
-      });
-      await store.addLog('info', `B站账号校验通过: ${d.uname}`, { userId: req.user.id });
+      await store.updateAccount(acc.id, { ...profile, cookieStatus: mergedNavStatus(acc, { code: 0 }, new Date().toISOString()) });
+      await store.flushNow();
       res.json({ account: maskAccount(store.getAccount(acc.id)) });
-    } catch (e) {
-      next(e);
-    }
+    }); } catch (e) { accountError(res, e); }
   });
 
   // 修改 Cookie：先向B站校验，通过才覆盖，避免写坏数据
-  router.put('/accounts/:id/cookie', requireAuth, async (req, res, next) => {
-    try {
+  router.put('/accounts/:id/cookie', requireAuth, accountWrite, async (req, res) => {
+    try { await credentialsLock.runExclusive(req.params.id, async () => {
       const acc = store.getAccount(req.params.id);
       if (!acc || !canTouch(acc, req)) return res.status(404).json({ error: '账号不存在' });
-      const sessdata = String((req.body && req.body.sessdata) || '').trim();
-      const biliJct = String((req.body && req.body.bili_jct) || '').trim();
-      if (!sessdata || !biliJct) return res.status(400).json({ error: 'SESSDATA 和 bili_jct 均为必填' });
-
-      let info;
-      try {
-        info = await bili.getMyInfo(sessdata);
-      } catch (e) {
-        return res.status(502).json({ error: '校验失败（无法连接B站）: ' + e.message });
+      const body = req.body || {};
+      if (Object.keys(body).some(k => !['sessdata', 'bili_jct', 'name', 'refreshToken'].includes(k)) || Object.values(body).some(v => typeof v !== 'string')) return res.status(400).json({ error: '非法Cookie字段' });
+      const sessdata = (body.sessdata || '').trim(), bili_jct = (body.bili_jct || '').trim(), refreshToken = (body.refreshToken || '').trim();
+      if (!sessdata || !bili_jct || [sessdata, bili_jct, refreshToken].some(v => /[\r\n]/.test(v))) return res.status(400).json({ error: 'SESSDATA 和 bili_jct 均为必填，且不得包含换行' });
+      let profile; try { profile = await validateBiliCredentials(bili, { sessdata, bili_jct }); }
+      catch (e) {
+        // 校验失败只更新红显状态，绝不替换现存 Cookie/token（网络/身份不符不改动既有健康状态）
+        if (e.kind !== 'network' && e.kind !== 'identity') {
+          await store.updateAccount(acc.id, { cookieStatus: mergedNavStatus(acc, { code: e.code, message: passportFailureMessage(e) }, new Date().toISOString()) });
+        }
+        return accountError(res, e);
       }
-      const checkedAt = new Date().toISOString();
-      if (info.code !== 0) {
-        await store.updateAccount(acc.id, {
-          cookieStatus: { ok: false, code: Number(info.code) || null, message: cookieErrorText(info), checkedAt }
-        });
-        return res.status(400).json({ error: `新 Cookie 无效 (code ${info.code}): ${info.message || ''}` });
+      if (acc.mid || acc.uid) { if (String(acc.mid || acc.uid) !== profile.mid) return res.status(400).json({ error: '不能修改为另一B站身份，请新增账号' }); }
+      const changed = sessdata !== acc.sessdata || bili_jct !== acc.bili_jct;
+      const newChain = changed || Boolean(refreshToken);
+      const patch = { sessdata, bili_jct, ...profile, cookieStatus: newChain ? { ok: true, code: 0, message: '', checkedAt: new Date().toISOString() } : mergedNavStatus(acc, { code: 0 }, new Date().toISOString()) };
+      if (changed) Object.assign(patch, { refreshToken: undefined, sid: undefined, dedeUserID: undefined, dedeUserIDCheckMd5: undefined });
+      if (refreshToken) patch.refreshToken = refreshToken;
+      if (newChain) patch.lastCookieRefreshAt = undefined;
+      if ((body.name || '').trim()) patch.name = body.name.trim();
+      await store.updateAccount(acc.id, patch); await store.flushNow();
+      if (newChain && cookieRefresh) {
+        // 新链已落库；清理旧恢复记录失败只降级记录，不能让用户以为保存失败。
+        try { await cookieRefresh.clearPending(acc.id); }
+        catch (e) { await store.addLog('warn', `账号 ${acc.id}：续期恢复记录清理失败`, { userId: req.user.id }); }
       }
-
-      const d = info.data || {};
-      const patch = {
-        sessdata,
-        bili_jct: biliJct,
-        uid: d.mid,
-        uname: d.uname,
-        avatar: d.face || '',
-        cookieStatus: { ok: true, code: 0, message: '', checkedAt }
-      };
-      const name = String((req.body && req.body.name) || '').trim();
-      if (name) patch.name = name;
-      await store.updateAccount(acc.id, patch);
-      await store.addLog('info', `B站账号「${d.uname}」Cookie 已更新并校验通过`, { userId: req.user.id });
+      await store.addLog('info', `账号 ${acc.id}：Cookie 已更新并校验通过`, { userId: req.user.id });
       res.json({ account: maskAccount(store.getAccount(acc.id)) });
-    } catch (e) {
-      next(e);
-    }
+    }); } catch (e) { accountError(res, e); }
   });
 
   router.delete('/accounts/:id', requireAuth, async (req, res, next) => {
-    try {
+    try { await credentialsLock.runExclusive(req.params.id, async () => {
       const acc = store.getAccount(req.params.id);
       if (!acc || !canTouch(acc, req)) return res.status(404).json({ error: '账号不存在' });
       const used = store.listJobs().filter(
@@ -415,9 +422,11 @@ module.exports = function createRoutes(ctx) {
         });
       }
       await store.deleteAccount(acc.id);
+      await store.flushNow();
+      if (cookieRefresh) { try { await cookieRefresh.clearPending(acc.id); } catch (e) { await store.addLog('warn', `账号 ${acc.id}：续期恢复记录清理失败`, { userId: req.user.id }); } }
       await store.addLog('info', `删除B站账号: ${acc.uname}`, { userId: req.user.id });
       res.json({ ok: true });
-    } catch (e) {
+    }); } catch (e) {
       next(e);
     }
   });

@@ -4,6 +4,10 @@ const { config } = require('./src/config');
 const { createStore } = require('./src/store');
 const { createStorage } = require('./src/storage');
 const { BilibiliClient } = require('./src/bilibili');
+const { PassportClient } = require('./src/bilibili-passport');
+const { AccountCredentialsLock } = require('./src/account-credentials-lock');
+const { CookieRefreshService } = require('./src/cookie-refresh');
+const { QrLoginService } = require('./src/qrcode-login');
 const { Scheduler } = require('./src/scheduler');
 const { CookieMonitor } = require('./src/cookie-monitor');
 const createRoutes = require('./src/routes');
@@ -42,9 +46,21 @@ async function main() {
 
   app.use(express.static(path.join(__dirname, 'public')));
 
-  const scheduler = new Scheduler({ store, storage, bili, config: config.scheduler });
-  const cookieMonitor = new CookieMonitor({ store, bili, config: config.cookieMonitor });
-  app.use('/api', createRoutes({ store, storage, bili, scheduler, cookieMonitor }));
+  // 进程内账号级凭据锁 + 共享服务：续期、扫码、发布、手动改 Cookie 共用同一把锁
+  const credentialsLock = new AccountCredentialsLock();
+  const passport = new PassportClient();
+  const cookieRefresh = new CookieRefreshService({
+    store, passport, bili, lock: credentialsLock,
+    dataDir: config.dataDir, enabled: config.cookieAutoRefresh
+  });
+  const qrLogin = new QrLoginService({ store, passport, bili, lock: credentialsLock, refresh: cookieRefresh });
+
+  const scheduler = new Scheduler({ store, storage, bili, config: config.scheduler, lock: credentialsLock });
+  const cookieMonitor = new CookieMonitor({ store, bili, config: config.cookieMonitor, refresh: cookieRefresh, lock: credentialsLock });
+  app.use('/api', createRoutes({
+    store, storage, bili, scheduler, cookieMonitor,
+    qrLogin, cookieRefresh, credentialsLock
+  }));
 
   app.use((err, req, res, next) => {
     console.error('[http]', err);
@@ -60,6 +76,7 @@ async function main() {
     console.log(`  地址: http://${config.host}:${config.port}`);
     console.log(`  存储: ${storage.name === 'local' ? '本地 ' + storage.dir : 'Cloudflare R2'}`);
     console.log(`  调度: 每 ${config.scheduler.intervalMs / 1000}s 检查一次队列`);
+    console.log(`  账号自动续期: ${config.cookieAutoRefresh ? '开启' : '关闭（仅保留巡检/扫码）'}`);
     console.log('  Ctrl+C 停止服务');
     console.log('==================================================');
   });
@@ -69,6 +86,10 @@ async function main() {
     scheduler.stop();
     cookieMonitor.stop();
     server.close();
+    // 先中止在途续期/扫码并等待其落盘，再 flush Store，避免退出丢链
+    try { await cookieRefresh.close(); } catch (e) { console.error(e); }
+    try { await qrLogin.close(); } catch (e) { console.error(e); }
+    passport.close();
     try {
       await store.flushNow();
     } catch (e) {

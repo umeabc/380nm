@@ -54,11 +54,23 @@ docker compose up -d --build     # 更新代码后重建
 
 ### 1. 添加B站账号
 
-1. 电脑浏览器登录 bilibili.com
-2. 按 `F12` 打开开发者工具 → 应用(Application) → Cookie → `https://www.bilibili.com`
-3. 复制 `SESSDATA` 和 `bili_jct` 两个值，填入「账号管理」→ 点"验证并添加"
+推荐「扫码添加」（账号管理页添加卡右上角）：点「扫码添加」→ 用哔哩哔哩 App 扫码并在手机上确认。二维码由本服务自己生成（PNG，不请求任何第三方二维码服务），服务端只把图片、不透明 `loginId` 和有效期交给浏览器，**不向浏览器暴露原始登录 URL 或 `qrcode_key`**；二维码本身是登录凭证，请勿截图或分享。扫码成功会一并保存自动续期所需的登录链（`refresh_token`）。
 
-> Cookie 仅保存在本机 `data/db.json`，请勿泄露。SESSDATA 有效期约 1 个月，失效后在账号管理里"重新校验"确认，再删除重新添加。
+也可以继续手动粘贴 Cookie：电脑浏览器登录 bilibili.com → `F12` → 应用(Application) → Cookie → 复制 `SESSDATA` 和 `bili_jct`，点"验证并添加"。手动添加的账号没有登录链，不能自动续期，但校验与发布照常工作；随时可以对它点「扫码更新」补上。
+
+> Cookie 与 `refresh_token` 同级敏感，仅保存在本机 `DATA_DIR`（默认 `data/`）的 `db.json` 与恢复侧文件 `cookie-refresh-pending.json`，权限 0600 写入。请勿泄露 `data/` 目录、公网挂载或上传工单。
+
+### 1.1 自动续期与三种迁移路径
+
+B 站给每个账号发的 `SESSDATA` 会过期。有登录链（`refresh_token`）的账号由后台**滚动 24 小时**检查并自动轮换一次，不需要人工干预；没有登录链的账号按原方式每约 30 分钟校验一次，失效后扫码更新即可。三种迁移路径：
+
+| 路径 | 做法 | 说明 |
+|---|---|---|
+| 扫码更新（推荐） | 账号卡点「扫码更新」，或通用「扫码添加」识别到已有相同 B 站账号 | **原地更新**：保留账号 id、备注、任务、日志与署名引用，不会新建重复账号，也不会自动迁移/覆盖他人的账号 |
+| 粘贴 refresh_token | 「修改 Cookie」→ 填同一浏览器、同一次登录的 Cookie 与 `ac_time_value`（localStorage） | 保存只校验 Cookie 登录身份，**不代表 token 已验证配对**；错配会在续期时判为失效并要求重新扫码。改了 Cookie 且留空会清除旧链；Cookie 完全未变且留空则保留原链 |
+| 暂不迁移 | 什么都不做 | 账号不会被自动删除、停用或取消任务，卡片会提示"该账号无法自动续期，建议扫码重新添加" |
+
+自动续期失败时卡片红显具体原因（如"Cookie已失效，请扫码更新"、"续期链不匹配或失效，请重新扫码"、"访问受限或请求频繁"）。**Cookie 仍有效但续期链异常时也保持红显**，不会被 30 分钟校验的成功刷绿；红色不代表禁止发布。没有"立即续期"按钮——续期额度固定为每账号每 24 小时一次（失败也计入），扫码更新不受该额度限制。
 
 ### 2. 发布一条定时动态
 
@@ -82,11 +94,16 @@ docker compose up -d --build     # 更新代码后重建
 |---|---|---|
 | `PORT` | 8787 | 服务端口 |
 | `HOST` | 127.0.0.1 | 监听地址（Docker 内为 0.0.0.0） |
+| `DATA_DIR` | `data/` | 数据目录（`db.json`、上传、派生缓存、续期恢复侧文件都在这里）；**同一 DATA_DIR 只允许一个进程读写** |
 | `STORAGE_DRIVER` | local | `local` 或 `r2` |
 | `UPLOAD_DIR` | data/uploads | 本地图片目录（仅 `local` 驱动） |
 | `SCHEDULER_INTERVAL` | 20000 | 队列扫描间隔（毫秒） |
 | `MAX_ATTEMPTS` | 3 | 发布失败最大尝试次数 |
 | `RETRY_DELAY_MS` | 60000 | 重试间隔（毫秒） |
+| `COOKIE_AUTO_REFRESH` | 1 | `1` 开启自动续期（检查/轮换/恢复），`0` 只关闭这条链，保留 30 分钟校验、扫码与提醒（恢复侧文件不删除）；**只接受 0/1，其他值启动即失败**；启动时读取，改后需重启 |
+| `COOKIE_CHECK_INTERVAL` | 1800000 | Cookie 校验间隔（毫秒，默认 30 分钟） |
+| `COOKIE_CHECK_STARTUP_DELAY` | 8000 | 启动后首次校验的延迟（毫秒） |
+| `COOKIE_CHECK_GAP` | 1500 | 账号之间的校验间隔（毫秒，防风控） |
 | `R2_ACCOUNT_ID` | — | Cloudflare 账户 ID |
 | `R2_ACCESS_KEY_ID` | — | R2 API Token 的 Access Key ID |
 | `R2_SECRET_ACCESS_KEY` | — | R2 API Token 的 Secret |
@@ -174,7 +191,11 @@ docker compose up -d
 │   ├── store.js           JSON 数据持久化（用户/会话/任务等，含旧数据迁移）
 │   ├── templates.js       默认模板
 │   ├── render.js          模板渲染 {{变量}}
-│   ├── bilibili.js        B站 API 客户端（图片上传 / 发布动态 / 话题搜索）
+│   ├── bilibili.js        B站 API 客户端（图片上传 / 发布动态 / 话题搜索，并导出共享 UA）
+│   ├── bilibili-passport.js 扫码登录 / Cookie 刷新协议（undici getSetCookie、RSA-OAEP SHA256、账号 DTO 脱敏）
+│   ├── qrcode-login.js    内存 QR 登录会话（TTL/限速/single-flight/原地更新）
+│   ├── account-credentials-lock.js 进程内账号级凭据锁
+│   ├── cookie-refresh.js  每日门禁 + 五步续期协调 + 恢复侧文件 + 安全文案
 │   ├── importers.js       链接导入（Pixiv 作品 / X 推文 / 直接图片链接，支持代理）
 │   ├── scheduler.js       队列调度器
 │   ├── routes.js          REST API（登录 / 用户管理 / 按用户隔离的数据接口）
@@ -202,13 +223,17 @@ docker compose up -d
 │   ├── settings.html      /settings     全站导入设置（Pixiv/X 凭据与代理，管理员）
 │   └── log.html           /log          运行日志
 ├── tests/                 测试文件（Node.js 内置 test runner）
+│   ├── passport.test.js   扫码/刷新协议纯函数与原始响应层（假上游）
+│   ├── cookie-refresh.test.js 五步顺序、门禁、崩溃恢复、monitor/scheduler 锁接入
+│   ├── accounts-auth.test.js 账号路由鉴权、DTO 脱敏、三路径迁移
+│   ├── accounts-ui.test.js 账号页扫码弹层状态机与页面静态约束
 │   ├── schedule.test.js   排期算法单元测试
 │   └── jobs-batch.test.js 批量入队接口集成测试
 ├── scripts/
 │   ├── reset.js           清空本地数据
 │   ├── bust-assets.js     更新静态资源版本号
 │   └── migrate-to-r2.js   本地图库迁移到 R2
-└── data/                  运行时生成（db.json + uploads/ + thumbs/）
+└── data/                  运行时生成（db.json + uploads/ + thumbs/ + cookie-refresh-pending.json）
 ```
 
 ## 图片缩略图与运维
@@ -223,6 +248,21 @@ docker compose up -d
 
 sharp精确0.34.5，lock保留Windows及linuxmusl optional，Docker安装禁止omit optional；不复制Windows node_modules。当前镜像标签是待测试机实际验证的 `node:20.20.0-alpine3.23`，本机无Docker，musl转码、镜像体积增量、CPU/架构和离线save/load均待部署验证，不能据Windows成功宣布通过。部署先R2测试机、再local少量页面；正式279图压测与授权B站发布留人工验收。离线部署建议联网CI先构建/转码后save/load；离线重建需预备基础镜像、全部锁定npm包及optional缓存并显式offline验证，无物料必须失败。
 
+## 账号续期、敏感存储与回滚
+
+**敏感边界**。`SESSDATA`/`bili_jct` 继续按片段遮罩展示；`refresh_token`、`sid`、`DedeUserID__ckMd5`、`refresh_csrf`、`qrcode_key`、原始登录 URL、二维码内容一律**不出服务端**：不进日志、不进报错正文、不进任何账号接口响应、不进浏览器存储。对外账号 DTO 只额外提供 `canAutoRefresh` 与 `mid`/`lastCookieRefreshAt`。数据库与恢复侧文件沿用现有明文存储边界（本功能不宣称磁盘加密），请用文件 ACL/卷权限、私密备份保护 `DATA_DIR`，不要把它公开静态挂载或上传工单。
+
+**恢复侧文件**。续期是五步网络流程，B 站作废旧链与本地落盘无法构成一个事务，因此新增 `DATA_DIR/cookie-refresh-pending.json`（0600，原子替换写入，每账号最多一条）：第 3 步拿到新凭据后、第 4 步确认旧链前先落盘 `{accountId,oldToken,newCredentials,stage,createdAt}`，确认与提交进度随之更新，新链确认落库后删除该条。若 confirm 网络错误，会保留"新 Cookie 已取得，确认旧链失败"的待确认记录并在次日只补确认、不重复旋转；恢复文件损坏或落盘失败会**停止该账号旋转并红显存储错误**。此文件只由续期协调器读写，请与 `db.json` 同级保护、一起备份。
+
+**单实例限制**。账号锁是**进程内**的（防止发布与续期同时换凭据），不宣称分布式安全：不要让多个进程/副本同时读写同一个 `DATA_DIR`。定时参数（30 分钟校验、1500ms 账号间隔、8 秒启动延迟）保持不变，续期不等待发布锁而是跳过本轮且不消耗额度。
+
+**开关与回滚**。短时止损：设 `COOKIE_AUTO_REFRESH=0` 重启，恢复记录保留，已有效的新 Cookie/`refresh_token` 继续可用（暂停自动刷新不会取消 B 站已经发生的轮换）。完整回滚前必须：停服务、等待/中止在途续期并落盘、**保留最新数据库与 `cookie-refresh-pending.json`**。特别注意：
+
+1. **绝不恢复轮换前的旧 Cookie/`refresh_token`**——旧链可能已被 B 站作废，恢复旧库会直接丢链。
+2. 旧版本 `maskAccount` 会展开对象并泄漏新增的 `refresh_token`/`sid`：回滚包**必须保留新敏感字段剔除补丁**，或先停服务用私密工具把新增敏感字段移出 `db.json` 并保存离线备份，再运行未修补的旧版。
+3. 待确认记录只能由兼容的刷新协调器恢复，不要在旧版本启动时随意删除；链状态未知时优先重新扫码，不要赌旧链可用。
+4. 回滚前端静态资源版本继续递增（例如 23，不降回 21/22），并提示已打开页面刷新。不删账号、不恢复旧任务库、不 `reset` 数据。
+
 ## 技术说明
 
 - **B站接口**：封装在 `src/bilibili.js`，使用现行接口（图片上传 `x/dynamic/feed/draw/upload_bfs`、发布动态 `x/dynamic/feed/create/dyn`、话题搜索 `x/topic/pub/search`）；B站接口若调整只需替换这一个文件
@@ -232,7 +272,9 @@ sharp精确0.34.5，lock保留Windows及linuxmusl optional，Docker安装禁止o
 
 ## 常见问题
 
-- **提示 Cookie 无效 / 未登录**：SESSDATA 过期或复制不完整，重新复制完整值
+- **提示 Cookie 无效 / 未登录**：账号卡红显"Cookie已失效，请扫码更新"，点该卡的「扫码更新」重新扫码即可，**不必删除账号**（任务与历史都会保留）
+- **卡片显示"无自动续期"**：手动粘贴 Cookie 添加的旧账号没有登录链，属正常能力缺失；扫码更新或填 `refresh_token` 即可获得自动续期
+- **卡片显示"续期异常"但 Cookie 有效**：自动续期链失效或网络受限，按红字原因稍后重试或扫码更新；此时仍可正常发布
 - **发布失败 code -xxx**：查看「运行日志」具体 message；常见为内容敏感词、频率限制、Cookie 失效
 - **话题搜索不到**：话题名需与B站话题一致；也可直接手输名称，发布时按精确匹配解析
 - **服务重启后任务会丢吗**：不会，队列持久化且中断任务自动重新排队

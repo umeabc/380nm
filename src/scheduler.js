@@ -2,11 +2,12 @@ const { slotSegment } = require('./templates');
 const { mergeLibraryMentions } = require('./mentions');
 
 class Scheduler {
-  constructor({ store, storage, bili, config }) {
+  constructor({ store, storage, bili, config, lock }) {
     this.store = store;
     this.storage = storage;
     this.bili = bili;
     this.cfg = config;
+    this.lock = lock || null;
     this._timer = null;
     this._busy = false;
   }
@@ -60,7 +61,16 @@ class Scheduler {
   async processJob(jobId) {
     const job = this.store.getJob(jobId);
     if (!job || job.status !== 'pending') return;
-    const account = this.store.getAccount(job.accountId);
+    // 账号级独占锁：从锁内读取凭据到上传/发布结束全程持锁，避免续期在上传与发布之间换掉 Cookie。
+    // 若续期先持锁，本任务保持 pending 等待本轮释放（不计失败、不改排期与重试参数）。
+    const run = () => this.publishJob(jobId);
+    return this.lock ? this.lock.runExclusive(job.accountId, run) : run();
+  }
+
+  async publishJob(jobId) {
+    const job = this.store.getJob(jobId);
+    if (!job || job.status !== 'pending') return;
+    const account = this.store.getAccount(job.accountId); // 锁内快照
     await this.store.updateJob(job.id, { status: 'publishing' });
     const tag = `[${job.id}] ${job.templateName} -> ${account ? account.uname || account.name : job.accountName || '未知账号'}`;
     try {
