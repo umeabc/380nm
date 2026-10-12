@@ -746,3 +746,64 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
   .batch-editor-row>td{padding:0;border:0}
   .batch-row-editor{margin-bottom:12px;border:1px solid var(--border);border-radius:var(--r-sm)}
 }
+
+/* ==================== 扫码登录 + Cookie 续期（仅 accounts 页 qrcode-* 作用域） ==================== */
+.qrcode-add-head{flex-wrap:wrap}
+.qrcode-add-actions{margin-left:auto;display:flex;flex-wrap:wrap;gap:8px}
+.qrcode-account-actions{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.qrcode-account-note{margin-top:6px;font-size:12px;line-height:1.6;color:var(--text-3)}
+.qrcode-refresh-error{margin-top:6px;font-size:12px;line-height:1.6;color:var(--red);word-break:break-word}
+.qrcode-refresh-at{margin-top:4px;font-size:11.5px;color:var(--text-3);font-variant-numeric:tabular-nums}
+.ck-badge.qrcode-no-refresh{color:var(--text-3);font-weight:400}
+
+.qrcode-migration{background:var(--gray-soft);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:12px}
+.qrcode-migration summary{font-size:12px;color:var(--text-2);cursor:pointer}
+.qrcode-migration summary .hint{margin-left:6px}
+.qrcode-migration-body{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.qrcode-migration-path{font-size:12px;color:var(--text-2);line-height:1.6}
+.qrcode-migration-path b{font-weight:600}
+
+/* 弹层：复用 .mask/.modal 视觉与生命周期，仅局部覆盖宽度/居中/状态色 */
+.qrcode-mask{padding:34px 16px}
+.qrcode-modal{max-width:440px}
+.qrcode-body{text-align:center;gap:16px}
+.qrcode-intro{font-size:12px;color:var(--text-2);line-height:1.6;text-align:left}
+.qrcode-image-wrap{width:256px;height:256px;max-width:100%;margin:0 auto;display:grid;place-items:center;overflow:hidden;background:#fff;border:1px solid var(--border);border-radius:var(--r-sm)}
+.qrcode-image{display:block;width:100%;height:100%;object-fit:contain}
+.qrcode-placeholder{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;height:100%;background:var(--gray-soft);color:var(--text-2);font-size:12px}
+.qrcode-status{display:flex;flex-direction:column;align-items:center;gap:4px;width:100%;min-height:52px}
+.qrcode-status-title{font-size:13px;font-weight:600}
+.qrcode-status.is-waiting .qrcode-status-title{color:var(--text-2)}
+.qrcode-status.is-scanned .qrcode-status-title{color:var(--blue)}
+.qrcode-status.is-expired .qrcode-status-title{color:var(--amber)}
+.qrcode-status.is-success .qrcode-status-title{color:var(--green)}
+.qrcode-status.is-error .qrcode-status-title{color:var(--red)}
+.qrcode-status-detail{font-size:12px;color:var(--text-2);line-height:1.6;word-break:break-word}
+.qrcode-status.is-error .qrcode-status-detail{color:var(--red)}
+.qrcode-status-actions{display:flex;justify-content:center;flex-wrap:wrap;gap:8px;margin-top:4px}
+.qrcode-security{text-align:center}
+.qrcode-foot{border-radius:0 0 14px 14px}
+.qrcode-close-hint{flex:1;min-width:0;font-size:11.5px;color:var(--text-3);text-align:left}
+
+.qrcode-token-field{margin-top:10px}
+.qrcode-token-source{margin-top:4px}
+.qrcode-token-pairing{margin-top:8px;font-size:12px;color:var(--text-2);line-height:1.6}
+.qrcode-token-pairing-sub{margin-top:4px}
+.qrcode-token-empty{margin-top:8px;font-size:12px;color:var(--text-2);line-height:1.6}
+/* 只约束这一个弹窗，不改共享 .modal */
+.ck-body{max-height:calc(100dvh - 32px);overflow-y:auto}
+
+@media(max-width:720px){
+  .qrcode-account-actions{width:100%;justify-content:flex-end}
+  .qrcode-account-update{min-height:40px}
+  .qrcode-account-actions .icon-btn{width:40px;height:40px}
+}
+@media(max-width:480px){
+  .qrcode-mask{padding:16px 12px}
+  .qrcode-body{padding:16px}
+  .qrcode-image-wrap{width:100%;max-width:256px;height:auto;aspect-ratio:1/1}
+}
+@media(prefers-reduced-motion:reduce){
+  .qrcode-modal{animation:none}
+  .qrcode-placeholder .spin{animation:none}
+}

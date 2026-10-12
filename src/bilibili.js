@@ -179,4 +179,4 @@ class BilibiliClient {
   }
 }
 
-module.exports = { BilibiliClient };
+module.exports = { BilibiliClient, BILIBILI_UA: DEFAULT_HEADERS['user-agent'] };

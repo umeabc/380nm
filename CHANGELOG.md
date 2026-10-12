@@ -2,6 +2,46 @@
 
 按时间倒序记录 380nm 的功能与修复。日期为提交日期。
 
+## 2026-10-12 · B站 Cookie 持久化（扫码登录 + 自动续期）
+
+新增扫码登录与 Cookie 自动续期：账号管理页可扫码添加/更新账号，有登录链的账号滚动 24 小时自动轮换一次，续期失败在卡片上红显阶段化原因。旧账号**无需删除重建**，三种迁移路径并存。
+
+**扫码登录（新增 `src/bilibili-passport.js`、`src/qrcode-login.js`）**：
+- 服务端用 `qrcode` 生成约 256px PNG dataURL，浏览器只拿图片 + 不透明 `loginId` + 有效期，**不暴露 `qrcode_key`/原始登录 URL**，不请求任何第三方二维码服务，不改 common 的 API 契约（页面局部 fetch + AbortController）
+- `undici` 显式 fetch 原始响应层：`headers.getSetCookie()` 逐条捕获（不用 `,` 拆 Expires），固定域名/Cookie 名白名单，拒绝 CR/LF 与非法名称，缺必需项时才用受控官方回跳 URL 兜底
+- 内存会话：每用户 1 个活跃会话、180 秒本地上限（86038 优先判过期）、生成 10 秒限速、全局 100、同 `loginId` poll single-flight + 2 秒上游最短间隔、短 TTL 保留脱敏结果幂等重放
+- 四态映射（waiting 86101 / scanned 86090 / expired 86038 / success 0），成功才落库，缺凭据/身份不一致**绝不半落库**；成功即清空内存里的 `qrcode_key` 与 Cookie
+
+**五步自动续期（新增 `src/cookie-refresh.js`、`src/account-credentials-lock.js`）**：
+- `cookie/info` →（需要时）`CorrespondPath` RSA-OAEP **SHA-256** 加密 `refresh_ts` → `correspond` 提取 `refresh_csrf` → `cookie/refresh`（旧凭据 + 旧 csrf）→ `confirm/refresh`（**新 Cookie/新 csrf + 旧 refresh_token**）→ 新 Cookie 与 `refresh_token` 同组落库并立即 flush
+- 每账号**滚动 24 小时**门禁：先持久化"本次检查/尝试开始时间"再发网络请求，失败也计次，跨重启不绕过；发布中（或锁占用）跳过且**不消耗额度**
+- 无法原子化的 confirm 窗口用恢复侧文件 `DATA_DIR/cookie-refresh-pending.json`（0600、原子替换、每账号一条）保全已取得的新链：confirm 失败保留新凭据 + 待确认记录，次日只补确认不重复旋转；恢复文件损坏/落盘失败停止该账号旋转并红显存储错误
+- 进程内账号级独占锁：续期、扫码原地更新、手动改 Cookie、删除与**发布全程**共用；发布持锁期间续期跳过，续期持锁时发布保持 pending 等待（不计失败、不改排期与重试参数），凭据在锁内重读，杜绝"上传与发布之间被换 Cookie"
+
+**三路径平滑迁移**：
+- **扫码原地更新**：按 `String(mid || uid)` 在**本人**账号中匹配，命中即原地更新（保留 id/userId/createdAt/备注/任务与历史引用）；通用扫码遇到同用户重复 mid 返回 409 并引导到具体账号卡；**跨用户同 mid 各自独立绑定，绝不更新他人账号**
+- **人工粘贴 `refresh_token`**：「修改 Cookie」新增选填项（密码型、不预填、autocomplete=off），只接受白名单字段；Cookie 改变且留空则清旧链与旧辅助 Cookie，Cookie 未变且留空则保留原链；不允许改成另一个 B 站身份（400 提示新增账号）；明确"保存只校验 Cookie，不代表 token 已验证配对"
+- **不迁移自然退役**：无登录链账号照常 30 分钟校验与发布，卡片灰色"无自动续期"弱提示，**绝不自动删除/停用/取消任务**
+
+**状态与安全**：
+- 对外账号 DTO 统一过滤：`refresh_token`/`sid`/`ckMd5`/`refresh_csrf`/恢复记录一律剔除，只附加 `canAutoRefresh`（唯一实现在 `bilibili-passport.js`，扫码与路由共用）
+- `cookieStatus.refreshError` 承载阶段化安全原因；**nav 校验成功不得把续期异常刷绿**（显示"Cookie有效，但自动续期失败：…"），只有完整续期/确认恢复成功或用户提交新登录链才清除；错误文案只由受控 stage/kind/code 生成，不回显上游正文/URL/header
+- 新增端点 `POST /api/accounts/qrcode`、`GET /api/accounts/qrcode/:loginId/poll` 与 `PUT /api/accounts/:id/cookie` 扩展，全部 `requireAuth` + `no-store`；写操作要求同源 JSON，未登录 401、非法输入 400、跨用户/不存在 404、身份不符 409、本地限速 429、上游 502、超时 504
+- 新配置 `COOKIE_AUTO_REFRESH`（严格 0/1，默认 1）：设 0 只关闭自动检查/旋转/恢复，保留 30 分钟校验、扫码与提醒，恢复记录不删除
+- 新增账号登录链字段（`mid`/`refreshToken`/`lastCookieRefreshAt`/`cookieStatus.refreshError`/辅助 Cookie）**缺失宽容、无显式迁移、不批量改写生产库**；`Store._flush` 串行化，`flushNow` 返回必含本次快照
+
+**协议依据更正**：`CorrespondPath` 是 1024-bit 公钥 RSA-OAEP/SHA-256 的 128 字节密文，小写 hex 长度为 **256**（早期任务书记为 512 属笔误）。协议来自社区逆向记录，非稳定官方 SDK。
+
+**前端与资源**：账号页新增扫码弹层（生成/待扫/待确认/过期/成功 + 网络/限流/404/409/401 手动恢复动作）、`details` 迁移说明折叠区（3 路径）、账号卡状态优先级与续期原因行、Cookie 弹窗 token 输入；关闭/Esc/遮罩/pagehide 一律取消在途请求、清 timer 与 loginId 并用 generation guard 丢弃迟到响应；QR 与 Cookie 弹层互斥。静态资源版本 21 → **22**。
+
+**测试覆盖**（Node 内置 runner，真实 Express + 临时 DATA_DIR + 假上游，无真实 Cookie/网络）：
+- `tests/passport.test.js`（7）：1024 公钥/OAEP SHA256/256hex、Set-Cookie 逗号等号编码删除、HTML 严格提取、四态、请求指纹与 confirm 旧 token 新 csrf、HTTP 分层与真实 Abort
+- `tests/cookie-refresh.test.js`（12）：五步顺序与准备记录先于 confirm、24h 跨重启门禁、publishing/锁跳过不耗额度、86095/-101/超时/风控分类、confirm 丢响应恢复、磁盘失败不 confirm、关停中止、monitor 先续期后 nav 且红显不被刷绿、scheduler 锁内读新链
+- `tests/accounts-auth.test.js`（13）：401/同源 JSON/429、四态与 404、并发 poll 只落库一次、同 mid 原地更新保 id/备注、uid 兜底、重复 mid 409、身份不符不改动、跨用户隔离、DTO 无秘密、补 mid、修改 Cookie 白名单与留空语义、恢复记录清理
+- `tests/accounts-ui.test.js`（6）：离线驱动扫码状态机（串行轮询/过期/关闭真实 abort/迟到响应）、账号卡五级状态优先级、无 localStorage/无 setInterval/无第三方/资源版本与 common 零 diff
+
+**未验证（不得据本文宣布通过）**：真实 B 站扫码与真实动态续期（依赖上游状态，留人工在隔离 DATA_DIR + 测试账号验收）、B 站接口/固定公钥/风控变化、SIGINT 关停链路的真机复验、多进程共用 DATA_DIR。全 stub 测试不能冒充真实登录/旋转通过。
+
 ## 2026-10-12 · 全站图片缩略图
 
 新增全站图片缩略图：站内所有入库图片的小尺寸展示改为按需生成的 WebP 缩略图（`GET /api/thumb/<key>?w=240|480`），大幅降低图库/队列/详情等页面的载入流量；发布、导出、放大查看仍使用原图，发布链路与数据模型零改动。

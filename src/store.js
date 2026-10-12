@@ -98,11 +98,18 @@ class Store {
     return DEFAULT_TEMPLATES().map((t) => ({ ...t, id: genId('tpl'), userId }));
   }
 
-  async _flush() {
-    await fsp.mkdir(path.dirname(this.file), { recursive: true });
-    const tmp = this.file + '.tmp';
-    await fsp.writeFile(tmp, JSON.stringify(this.data, null, 2), 'utf8');
-    await fsp.rename(tmp, this.file);
+  _flush() {
+    // 排队时捕获快照：flushNow 返回必须包含本次调用时的数据。
+    const snapshot = JSON.stringify(this.data, null, 2);
+    const write = async () => {
+      await fsp.mkdir(path.dirname(this.file), { recursive: true });
+      const tmp = this.file + '.tmp';
+      await fsp.writeFile(tmp, snapshot, { encoding: 'utf8', mode: 0o600 });
+      await fsp.rename(tmp, this.file);
+    };
+    const next = (this._flushQueue || Promise.resolve()).then(write);
+    this._flushQueue = next.catch(() => {});
+    return next;
   }
 
   save() {
