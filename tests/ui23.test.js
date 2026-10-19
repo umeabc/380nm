@@ -126,16 +126,12 @@ test('dashboard：4 指标 / 柱图 / 环图 / 最近发布全部显式 tile', (
   assert.doesNotMatch(read('public/js/pages/dashboard.js'), /<img/);
 });
 
-test('release：图文 / 设置 / 抓取配图 / 提交四张独立卡，字段 ID 唯一且未丢', () => {
+test('release：恢复原始布局，字段 ID 唯一且未丢，待发布角标保留', () => {
   const html = read('public/release.html');
-  assert.match(html, /class="page tile-page release-page"/);
-  assert.match(html, /class="tile-board release-board"/);
-  assert.match(html, /class="tile release-compose"/);
-  assert.match(html, /class="tile release-settings"/);
-  assert.match(html, /class="tile release-fetchimg"/);
-  assert.match(html, /class="tile release-submit"/);
-  assert.equal((html.match(/class="release-section"/g) || []).length, 4, '图文与抓取配图卡内共四个小分区');
-  assert.match(html, /class="tile-foot"/);
+  // 用户裁决：release 页回退磁吸改版，保留原始 .group/.col 流式结构（无 tile 类）
+  assert.match(html, /class="page" id="page"/);
+  assert.doesNotMatch(html, /tile-board|release-fetchimg|release-compose/, 'release 不得保留磁吸卡结构');
+  // 所有字段 ID 唯一存在
   for (const id of ['no-account-warn', 'dyn-title', 'titleCounter', 'var-fields', 'var-people',
     'var-topic', 'var-at', 'link-input', 'btn-parse', 'fetchState', 'creditInput', 'btn-insert-credit',
     'imgHint', 'pick-upload-btn', 'file-input', 'sel-strip', 'pick-folders', 'img-grid', 'pick-pager',
@@ -143,25 +139,13 @@ test('release：图文 / 设置 / 抓取配图 / 提交四张独立卡，字段 
     'composeSummary', 'btn-submit']) {
     assert.equal((html.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1, `#${id} 必须唯一存在`);
   }
-  // 时间/预设留在设置卡，话题与 @ 仍在模板变量上下文，链接抓取与配图整体移入独立卡
-  const settings = html.slice(html.indexOf('release-settings'), html.indexOf('release-fetchimg'));
-  assert.match(settings, /id="time-input"/);
-  assert.match(settings, /id="presets"/);
-  assert.match(settings, /id="sel-account"/);
-  const compose = html.slice(html.indexOf('release-compose'), html.indexOf('release-settings'));
-  assert.match(compose, /id="var-topic"/);
-  assert.match(compose, /id="var-at"/);
-  assert.doesNotMatch(compose, /id="img-grid"/, '配图不得留在待发图文卡');
-  const fetchimg = html.slice(html.indexOf('release-fetchimg'), html.indexOf('release-submit'));
-  assert.match(fetchimg, /id="link-input"/);
-  assert.match(fetchimg, /id="img-grid"/);
-  assert.match(fetchimg, /id="pick-folders"/);
-  assert.match(fetchimg, /id="sel-strip"/);
-  // DOM 顺序固定，靠 grid-column 定位而非 order
-  const order = ['release-compose', 'release-settings', 'release-fetchimg', 'release-submit']
-    .map((c) => html.indexOf(c));
-  assert.deepEqual([...order].sort((a, b) => a - b), order, 'DOM 顺序必须固定');
-  assert.doesNotMatch(read('public/css/app.css'), /\.release-[^{]*\{[^}]*[;{]order:/, '不得用 order 改布局');
+  // 需求②保留：待发布角标（release.js 复用 common 的 pendingImageMap/pendTip）
+  const js = read('public/js/pages/release.js');
+  assert.match(js, /pendingImageMap/);
+  assert.match(js, /pendTip/);
+  assert.match(js, /release-pend-badge/);
+  assert.doesNotMatch(js, /sel-strip[^`]*release-pend-badge/, '草稿条不加待发布角标');
+  assert.match(read('public/css/app.css'), /\.release-pend-badge\{position:absolute;top:4px;right:4px/);
 });
 
 test('queue：筛选卡 + 分组白卡由 HTML 与 JS 共同保持', () => {
