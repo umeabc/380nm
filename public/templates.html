@@ -4,25 +4,29 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>模板管理 · 380nm</title>
-<link rel="stylesheet" href="/css/app.css?v=22">
+<link rel="stylesheet" href="/css/app.css?v=23">
 </head>
 <body>
 <div class="sidebar" id="sidebar"></div>
 <div class="nav-backdrop" id="nav-backdrop"></div>
 <div class="main-shell">
   <header class="topbar" id="topbar"></header>
-  <main class="page" id="page">
-    <div class="pagehead">
+  <main class="page tile-page" id="page">
+    <div class="tile-stack">
+    <div class="pagehead tile">
       <div class="ph-row">
         <h2>模板</h2>
         <div class="ph-ops"><a class="btn primary sm" href="/templates/new">新建模板</a></div>
       </div>
     </div>
-    <div id="tpl-list"></div>
+    <div class="tile templates-card">
+      <div id="tpl-list"></div>
+    </div>
+    </div>
   </main>
 </div>
 <div id="toast-wrap"></div>
-<script src="/js/common.js?v=22"></script>
-<script src="/js/pages/templates.js?v=22"></script>
+<script src="/js/common.js?v=23"></script>
+<script src="/js/pages/templates.js?v=23"></script>
 </body>
 </html>

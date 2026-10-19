@@ -1,6 +1,6 @@
 'use strict';
 (async function () {
-  const { $, $$, icon, esc, api, toast, renderText, debounce, toLocalInput, publishedImageMap, pubTip } = App;
+  const { $, $$, icon, esc, api, toast, renderText, debounce, toLocalInput, publishedImageMap, pubTip, pendingImageMap, pendTip } = App;
 
   const IMG_PER_PAGE = 10;
   const FETCH_STEPS = ['识别平台', '请求作品页', '抓取原图', '提取作者信息'];
@@ -331,6 +331,8 @@
     if (hint) hint.innerHTML = `最多 ${limit} 张，按选择顺序发布 · 已选 <span class="ctr${n > limit ? ' bad' : ''}">${n} / ${limit}</span>`;
     const selKeys = state.selected.map((i) => i.key);
     const pubMap = publishedImageMap(state.jobs);
+    /* 待发布 = 被现有 pending/publishing 任务引用；与草稿已选无关，契约沿用 common.js */
+    const pendMap = pendingImageMap(state.jobs);
     const list = state.images.filter((i) =>
       state.pickFolder === 'all' ? true : state.pickFolder === 'none' ? !i.folderId : i.folderId === state.pickFolder);
     const pages = Math.max(1, Math.ceil(list.length / IMG_PER_PAGE));
@@ -339,13 +341,15 @@
     const pageItems = list.slice((state.pickPage - 1) * IMG_PER_PAGE, state.pickPage * IMG_PER_PAGE);
     $('#img-grid').innerHTML = pageItems.map((img) => {
       const pub = pubMap[img.key];
-      return `<div class="cell ${selKeys.includes(img.key) ? 'on' : ''} ${pub ? 'pub' : ''}" data-key="${esc(img.key)}"
-           title="${esc(img.name)}${pubTip(pub)}">
+      const pend = pendMap[img.key];
+      return `<div class="cell ${selKeys.includes(img.key) ? 'on' : ''} ${pub ? 'pub' : ''} ${pend ? 'pending' : ''}" data-key="${esc(img.key)}"
+           title="${esc(img.name)}${pendTip(pend)}${pubTip(pub)}">
          <img referrerpolicy="no-referrer" src="${esc(App.imageSrc(img, 240))}" alt="${esc(img.name)}" loading="lazy">
          <span class="ord">${selKeys.indexOf(img.key) + 1 || ''}</span>
          ${pub ? `<span class="pub-badge">已发布</span>` : ''}
+         ${pend ? `<span class="pend-badge release-pend-badge">待发布</span>` : ''}
        </div>`;
-    }).join('') || '<div class="mini-empty">该文件夹暂无图片<br>可从上方「链接抓取」自动入图，或点击「上传图片」</div>';
+    }).join('') || '<div class="mini-empty tile-empty">该文件夹暂无图片<br>可从上方「链接抓取」自动入图，或点击「上传图片」</div>';
     const pg = $('#pick-pager');
     if (list.length <= IMG_PER_PAGE) { pg.innerHTML = ''; return; }
     pg.innerHTML = `<button id="pg-prev" type="button" ${state.pickPage <= 1 ? 'disabled' : ''}>上一页</button>

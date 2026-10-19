@@ -83,27 +83,27 @@
           <div class="ph-ops">${jobOps(j)}</div>
         </div>
       </div>
-      <div class="grid2">
-        <div class="stack">
-          <div class="card" style="padding:16px 18px">
-            <div class="card-h" style="border:none;background:none;padding:0 0 10px">动态内容</div>
+      <div class="grid2 tile-board job-board">
+        <div class="stack tile-stack">
+          <div class="card tile">
+            <div class="card-h tile-head">动态内容</div>
             ${j.title ? `<div style="font-weight:700;font-size:15px;margin-bottom:8px">${esc(j.title)}</div>` : ''}
             <div class="body-text">${esc(j.text)}</div>
             ${slotSegmentHTML(j) ? `<div class="body-text" style="margin-top:10px">${slotSegmentHTML(j)}</div>` : ''}
           </div>
-          <div class="card" style="padding:16px 18px">
-            <div class="card-h" style="border:none;background:none;padding:0 0 10px">配图（${imgs.length}）</div>
+          <div class="card tile">
+            <div class="card-h tile-head">配图（${imgs.length}）</div>
             ${imgs.length ? `<div class="img-grid">${imgs.map((i) => {
               const pub = pubMap[i.key];
               return `<a class="cell ${pub ? 'pub' : ''}" href="${esc(i.url)}" target="_blank" rel="noopener" title="${esc(i.name || '')}${pubTip(pub)}"><img referrerpolicy="no-referrer" src="${esc(App.imageSrc(i, 480))}" alt="" loading="lazy">${pub ? `<span class="pub-badge">已发布</span>` : ''}</a>`;
             }).join('')}</div>`
-      : '<div class="empty">无配图</div>'}
+      : '<div class="empty tile-empty">无配图</div>'}
           </div>
         </div>
-        <div class="stack">
-          <div class="card" style="padding:16px 18px">
-            <div class="card-h" style="border:none;background:none;padding:0 0 10px">任务信息</div>
-            <dl class="dl">
+        <div class="stack tile-stack">
+          <div class="card tile">
+            <div class="card-h tile-head">任务信息</div>
+            <dl class="dl tile-kv">
               <dt>发布账号</dt><dd>${esc(j.accountName)}</dd>
               ${owner ? `<dt>所属用户</dt><dd>${esc(owner)}</dd>` : ''}
               ${j.type ? `<dt>内容类型</dt><dd>${TYPE_LABEL[j.type] || esc(j.type)}</dd>` : ''}
@@ -120,9 +120,9 @@
             ${cd}
             ${j.lastError ? `<div class="q-err" style="margin-top:10px">${esc(j.lastError)}</div>` : ''}
           </div>
-          <div class="card">
-            <div class="card-h">相关日志</div>
-            ${jobLogs.map((l) => `<div class="log-mini"><span class="lt">${fmtTime(l.time)}</span><span>${esc(l.message)}</span></div>`).join('') || '<div class="empty">暂无日志</div>'}
+          <div class="card tile">
+            <div class="card-h tile-head">相关日志</div>
+            ${jobLogs.map((l) => `<div class="log-mini"><span class="lt">${fmtTime(l.time)}</span><span>${esc(l.message)}</span></div>`).join('') || '<div class="empty tile-empty">暂无日志</div>'}
           </div>
         </div>
       </div>`;
@@ -133,7 +133,7 @@
         <a class="backlink" href="/queue">${icon('left', 13)} 返回队列</a>
         <div class="ph-row"><h2>编辑任务</h2></div>
       </div>
-      <div class="card" style="max-width:760px">
+      <div class="card tile" style="max-width:760px">
         <div class="fld" style="margin-bottom:12px"><label>发布账号</label><select id="e-account">
           ${state.accounts.map((a) => `<option value="${a.id}" ${a.id === j.accountId ? 'selected' : ''}>${esc(a.uname || a.name)}</option>`).join('')}
         </select></div>
@@ -288,7 +288,7 @@
            <span class="ord">${keys().indexOf(img.key) + 1 || ''}</span>
            ${pub ? `<span class="pub-badge">已发布</span>` : ''}
          </div>`;
-      }).join('') || '<div class="empty">图片库为空</div>';
+      }).join('') || '<div class="empty tile-empty">图片库为空</div>';
     };
     paint();
     $('#e-img-grid').addEventListener('click', (e) => {
@@ -410,7 +410,7 @@
       }
     }
     if (!j) {
-      $('#job-detail').innerHTML = '<div class="empty">任务不存在或已删除</div>';
+      $('#job-detail').innerHTML = '<div class="empty tile">任务不存在或已删除</div>';
       return;
     }
     if (state.jobEdit) renderEditForm(j);

@@ -4,20 +4,21 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>账号库 · 380nm</title>
-<link rel="stylesheet" href="/css/app.css?v=22">
+<link rel="stylesheet" href="/css/app.css?v=23">
 </head>
 <body>
 <div class="sidebar" id="sidebar"></div>
 <div class="nav-backdrop" id="nav-backdrop"></div>
 <div class="main-shell">
   <header class="topbar" id="topbar"></header>
-  <main class="page" id="page">
-    <section class="group">
-      <div class="card-head">
+  <main class="page tile-page" id="page">
+    <div class="tile-stack">
+    <section class="group tile tile--flush">
+      <div class="card-head tile-head">
         <span class="g-title" id="form-title">添加账号</span>
         <span class="hint-r">账号库不再区分角色；发布动态的「翻译人员 / 嵌字人员」共用本列表的在岗账号</span>
       </div>
-      <div class="card-body">
+      <div class="card-body tile-body">
         <div class="f-row">
           <div class="field"><label>账号名（显示名）</label><input class="ctl" id="la-name" placeholder="如：白尾絵里厨"></div>
           <div class="field"><label>handle（不含 @）</label><input class="ctl" id="la-handle" placeholder="如：tail_eri"></div>
@@ -33,11 +34,12 @@
         </div>
       </div>
     </section>
-    <section id="lib-list"></section>
+    <section id="lib-list" class="tile-stack"></section>
+    </div>
   </main>
 </div>
 <div id="toast-wrap"></div>
-<script src="/js/common.js?v=22"></script>
-<script src="/js/pages/libaccounts.js?v=22"></script>
+<script src="/js/common.js?v=23"></script>
+<script src="/js/pages/libaccounts.js?v=23"></script>
 </body>
 </html>

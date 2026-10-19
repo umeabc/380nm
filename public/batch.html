@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>批量编排 · 380nm</title>
-<link rel="stylesheet" href="/css/app.css?v=22">
+<link rel="stylesheet" href="/css/app.css?v=23">
 </head>
 <body>
 <div class="sidebar" id="sidebar"></div>
 <div class="overlay" id="overlay"></div>
 <div class="main-shell">
   <header class="topbar" id="topbar"></header>
-  <main class="page batch-page" id="page">
+  <main class="page batch-page tile-page" id="page">
     <div class="pagehead">
       <div class="ph-row">
         <h2>批量编排</h2>
@@ -27,10 +27,10 @@
       <a class="btn sm" href="/accounts" style="margin-left:10px">前往账号管理</a>
     </div>
 
-    <div class="batch-layout">
+    <div class="batch-layout tile-board batch-board">
       <!-- 左栏：配置 -->
-      <aside class="card batch-config">
-        <div class="card-h">
+      <aside class="card batch-config tile">
+        <div class="card-h tile-head">
           编排配置
           <span class="hint-r">最多 50 条</span>
         </div>
@@ -122,14 +122,14 @@
         <div class="warn batch-notice" id="collision-warn" style="display:none"></div>
         <div class="batch-resultbar" id="result-bar" style="display:none"></div>
 
-        <div class="card batch-output">
-          <div class="card-h batch-output-head">
+        <div class="card batch-output tile">
+          <div class="card-h tile-head batch-output-head">
             <span>编排结果</span>
             <span class="hint-r" id="result-summary"></span>
             <div id="result-actions" style="display:none;margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"></div>
           </div>
           <div class="batch-state" id="batch-state">
-            <div class="empty batch-empty">
+            <div class="empty batch-empty tile-empty">
               <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
               <div class="empty-t">还没有编排结果</div>
               <div class="empty-s">在左侧录入作品链接并完成配置，点击「开始编排」生成预览。</div>
@@ -156,8 +156,8 @@
 </div>
 
 <div id="toast-wrap"></div>
-<script src="/js/common.js?v=22"></script>
-<script src="/js/schedule.js?v=22"></script>
-<script src="/js/pages/batch.js?v=22"></script>
+<script src="/js/common.js?v=23"></script>
+<script src="/js/schedule.js?v=23"></script>
+<script src="/js/pages/batch.js?v=23"></script>
 </body>
 </html>

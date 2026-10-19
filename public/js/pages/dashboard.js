@@ -18,7 +18,7 @@
         $('#st-failed').textContent = c.failed;
         const done = c.published + c.failed;
         const rate = done ? Math.round(c.published / done * 100) : null;
-        $('#st-rate').innerHTML = rate === null ? '--' : rate + '<small style="font-size:13px;color:var(--text-3)">%</small>';
+        $('#st-rate').innerHTML = rate === null ? '--' : rate + '<small class="pct">%</small>';
         $('#ov-ring-v').innerHTML = rate === null ? '--' : `${rate}<small>%</small>`;
         $('#ov-ring').style.background = rate === null
           ? 'conic-gradient(#e2e0ee 0 100%)'
@@ -60,7 +60,7 @@
              <span class="lt">${fmtTime(j.publishedAt)}</span>
              ${j.dynamicUrl ? `<a class="lm-link" href="${esc(j.dynamicUrl)}" target="_blank" rel="noopener">查看 →</a>` : ''}
              <span class="lm-text">${esc(j.templateName)} · ${esc(j.accountName)} · ${esc(App.snippet(j.text, 60))}</span>
-           </div>`).join('') || '<div class="empty">还没有发布记录</div>';
+           </div>`).join('') || '<div class="empty tile-empty">还没有发布记录</div>';
 
         const last = recent[0];
         $('#st-last').onclick = last && last.dynamicUrl

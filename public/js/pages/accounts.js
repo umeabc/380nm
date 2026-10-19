@@ -186,7 +186,7 @@
            <button class="icon-btn danger" data-accdel="${esc(a.id)}" title="删除" aria-label="删除账号">${icon('trash', 15)}</button>
          </div>
        </div>`;
-    }).join('') || '<div class="empty">还没有B站账号</div>';
+    }).join('') || '<div class="empty tile-empty">还没有B站账号</div>';
   }
   async function loadAndRender() {
     renderAccounts((await api('GET', '/api/accounts')).accounts);

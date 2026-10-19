@@ -28,7 +28,7 @@
         <div class="urow-badges">${rolePill}${activePill}</div>
         <div class="ops">${ops}</div>
       </div>`;
-    }).join('') || '<div class="empty">暂无用户</div>';
+    }).join('') || '<div class="empty tile-empty">暂无用户</div>';
   }
   async function loadAndRender() {
     const users = (await api('GET', '/api/users')).users;

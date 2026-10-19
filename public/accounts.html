@@ -4,48 +4,50 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>账号管理 · 380nm</title>
-<link rel="stylesheet" href="/css/app.css?v=22">
+<link rel="stylesheet" href="/css/app.css?v=23">
 </head>
 <body>
 <div class="sidebar" id="sidebar"></div>
 <div class="nav-backdrop" id="nav-backdrop"></div>
 <div class="main-shell">
   <header class="topbar" id="topbar"></header>
-  <main class="page" id="page">
-    <div class="card">
-      <div class="card-h qrcode-add-head">
-        <span>添加B站账号</span>
-        <div class="qrcode-add-actions">
-          <button class="btn" id="btn-acc-qrcode" type="button">扫码添加</button>
+  <main class="page tile-page accounts-page" id="page">
+    <div class="tile-stack">
+      <div class="card tile">
+        <div class="card-h tile-head qrcode-add-head">
+          <span>添加B站账号</span>
+          <div class="qrcode-add-actions">
+            <button class="btn" id="btn-acc-qrcode" type="button">扫码添加</button>
+          </div>
+        </div>
+        <div class="frow">
+          <div class="fld"><label>备注名（可选）</label><input id="acc-name" placeholder="如：主号"></div>
+          <div class="fld"><label>SESSDATA</label><input id="acc-sessdata" placeholder="浏览器 Cookie 中的 SESSDATA"></div>
+          <div class="fld"><label>bili_jct</label><input id="acc-jct" placeholder="浏览器 Cookie 中的 bili_jct"></div>
+          <button class="btn primary" id="btn-acc-add">验证并添加</button>
+        </div>
+        <div class="hint" style="margin-top:10px">
+          获取方式：电脑浏览器登录 bilibili.com → F12 打开开发者工具 → 应用(Application) → Cookie → 复制 SESSDATA 和 bili_jct 两个值。账号仅本人可见，Cookie 仅用于发布动态。
         </div>
       </div>
-      <div class="frow">
-        <div class="fld"><label>备注名（可选）</label><input id="acc-name" placeholder="如：主号"></div>
-        <div class="fld"><label>SESSDATA</label><input id="acc-sessdata" placeholder="浏览器 Cookie 中的 SESSDATA"></div>
-        <div class="fld"><label>bili_jct</label><input id="acc-jct" placeholder="浏览器 Cookie 中的 bili_jct"></div>
-        <button class="btn primary" id="btn-acc-add">验证并添加</button>
+      <div class="card mt tile">
+        <div class="card-h tile-head">我的B站账号</div>
+        <details class="qrcode-migration">
+          <summary>旧账号如何开启自动续期 <span class="hint">3种方式</span></summary>
+          <div class="qrcode-migration-body">
+            <div class="qrcode-migration-path"><b>扫码更新</b>：在对应账号卡点击「扫码更新」。通用「扫码添加」识别到当前用户已有相同B站账号时，也会更新原账号；保留备注、任务与历史记录，不必删除重建。</div>
+            <div class="qrcode-migration-path"><b>粘贴 refresh_token</b>：在「修改 Cookie」中填写同一浏览器、同一次登录的 Cookie 与 ac_time_value。保存仅校验 Cookie，续期时才会发现配对错误。</div>
+            <div class="qrcode-migration-path"><b>暂不迁移</b>：现有 Cookie 仍按原方式校验和发布，失效后可扫码更新。系统不会自动删除、停用账号或取消任务。</div>
+            <div class="hint">Cookie 定期校验约每30分钟一次；有续期能力的账号最多每24小时检查或尝试一次，失败也计入。扫码更新不受该每日续期额度限制。</div>
+          </div>
+        </details>
+        <div id="acc-list"></div>
       </div>
-      <div class="hint" style="margin-top:10px">
-        获取方式：电脑浏览器登录 bilibili.com → F12 打开开发者工具 → 应用(Application) → Cookie → 复制 SESSDATA 和 bili_jct 两个值。账号仅本人可见，Cookie 仅用于发布动态。
-      </div>
-    </div>
-    <div class="card mt">
-      <div class="card-h">我的B站账号</div>
-      <details class="qrcode-migration">
-        <summary>旧账号如何开启自动续期 <span class="hint">3种方式</span></summary>
-        <div class="qrcode-migration-body">
-          <div class="qrcode-migration-path"><b>扫码更新</b>：在对应账号卡点击「扫码更新」。通用「扫码添加」识别到当前用户已有相同B站账号时，也会更新原账号；保留备注、任务与历史记录，不必删除重建。</div>
-          <div class="qrcode-migration-path"><b>粘贴 refresh_token</b>：在「修改 Cookie」中填写同一浏览器、同一次登录的 Cookie 与 ac_time_value。保存仅校验 Cookie，续期时才会发现配对错误。</div>
-          <div class="qrcode-migration-path"><b>暂不迁移</b>：现有 Cookie 仍按原方式校验和发布，失效后可扫码更新。系统不会自动删除、停用账号或取消任务。</div>
-          <div class="hint">Cookie 定期校验约每30分钟一次；有续期能力的账号最多每24小时检查或尝试一次，失败也计入。扫码更新不受该每日续期额度限制。</div>
-        </div>
-      </details>
-      <div id="acc-list"></div>
     </div>
   </main>
 </div>
 <div id="toast-wrap"></div>
-<script src="/js/common.js?v=22"></script>
-<script src="/js/pages/accounts.js?v=22"></script>
+<script src="/js/common.js?v=23"></script>
+<script src="/js/pages/accounts.js?v=23"></script>
 </body>
 </html>

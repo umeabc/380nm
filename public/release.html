@@ -4,46 +4,33 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>发布动态 · 380nm</title>
-<link rel="stylesheet" href="/css/app.css?v=22">
+<link rel="stylesheet" href="/css/app.css?v=23">
 </head>
 <body>
 <div class="sidebar" id="sidebar"></div>
 <div class="nav-backdrop" id="nav-backdrop"></div>
 <div class="main-shell">
   <header class="topbar" id="topbar"></header>
-  <main class="page" id="page">
+  <main class="page tile-page release-page" id="page">
     <div id="no-account-warn" class="warn banner-amber" style="display:none">还没有可用的B站账号，请先到「账号管理」添加 SESSDATA 和 bili_jct。</div>
 
-    <div class="grid2">
-      <!-- ============ 左列 ============ -->
-      <div class="col">
-        <section class="group">
-          <div class="card-head"><span class="g-title">账号与模板</span></div>
-          <div class="card-body">
-            <div class="f-row">
-              <div class="field"><label>发布账号</label><select class="ctl" id="sel-account"></select></div>
-              <div class="field"><label>动态模板</label><select class="ctl" id="sel-template"></select></div>
+    <div class="tile-board release-board">
+      <section class="tile release-compose">
+        <div class="tile-head"><h2 class="tile-title">待发图文</h2></div>
+        <div class="tile-body">
+          <div class="release-section">
+            <div class="release-section-head">
+              <span class="release-section-title">动态标题</span>
+              <span class="hint-r"><span>可选</span><span class="ctr" id="titleCounter">0 / 20 字</span></span>
             </div>
-            <div class="foot-hint" id="tplHint"></div>
-          </div>
-        </section>
-
-        <section class="group">
-          <div class="card-head">
-            <span class="g-title">动态标题</span>
-            <span class="hint-r"><span>可选</span><span class="ctr" id="titleCounter">0 / 20 字</span></span>
-          </div>
-          <div class="card-body">
             <input class="ctl" id="dyn-title" maxlength="20" placeholder="给这条动态起个标题（图文动态显示在图片上方）">
           </div>
-        </section>
 
-        <section class="group">
-          <div class="card-head">
-            <span class="g-title">模板变量</span>
-            <span class="hint-r">使用 <b style="color:var(--primary)">{{占位符}}</b> 自动填充</span>
-          </div>
-          <div class="card-body">
+          <div class="release-section">
+            <div class="release-section-head">
+              <span class="release-section-title">模板变量</span>
+              <span class="hint-r">使用 <b style="color:var(--primary)">{{占位符}}</b> 自动填充</span>
+            </div>
             <!-- 模板自带变量（日期 / 正文 / 结尾语 …） -->
             <div id="var-fields"></div>
 
@@ -51,7 +38,6 @@
             <div class="var-sep"></div>
             <div id="var-people"></div>
 
-            <!-- 话题：由右列整卡迁移至此 -->
             <div class="var-sep"></div>
             <div id="var-topic">
               <div class="var-label">
@@ -65,7 +51,6 @@
               <div id="topicHits"></div>
             </div>
 
-            <!-- @提及：由右列整卡迁移至此 -->
             <div class="var-sep"></div>
             <div id="var-at">
               <div class="var-label">
@@ -80,18 +65,13 @@
 
             <div class="foot-hint">话题与 @提及 已并入「模板变量」区：与日期、正文等变量同处一个编辑上下文，@提及 可直接插到任意变量的光标处。</div>
           </div>
-        </section>
-      </div>
 
-      <!-- ============ 右列 ============ -->
-      <div class="col">
-        <section class="group">
-          <div class="card-head">
-            <span class="g-title">链接抓取</span>
-            <span class="new-badge">新增</span>
-            <span class="hint-r">粘贴链接自动抓图与署名</span>
-          </div>
-          <div class="card-body">
+          <div class="release-section">
+            <div class="release-section-head">
+              <span class="release-section-title">链接抓取</span>
+              <span class="new-badge">新增</span>
+              <span class="hint-r">粘贴链接自动抓图与署名</span>
+            </div>
             <div class="field">
               <label>作品链接 <span style="color:var(--text-3)">· 支持 X(Twitter) / Pixiv 作品页</span></label>
               <div class="ctl-row">
@@ -108,16 +88,14 @@
               </div>
             </div>
           </div>
-        </section>
 
-        <section class="group">
-          <div class="card-head">
-            <span class="g-title">配图</span>
-            <span class="hint-r" id="imgHint"></span>
-            <button class="btn sm" id="pick-upload-btn" type="button" style="margin-left:10px">上传图片</button>
-            <input type="file" id="file-input" accept="image/*" multiple style="display:none">
-          </div>
-          <div class="card-body">
+          <div class="release-section">
+            <div class="release-section-head">
+              <span class="release-section-title">配图</span>
+              <span class="hint-r" id="imgHint"></span>
+              <button class="btn sm" id="pick-upload-btn" type="button">上传图片</button>
+              <input type="file" id="file-input" accept="image/*" multiple style="display:none">
+            </div>
             <div class="sel-strip" id="sel-strip"></div>
             <div class="img-layout">
               <div id="pick-folders"></div>
@@ -128,52 +106,59 @@
             </div>
             <div class="foot-hint">左侧切换文件夹浏览；上传的图片存入当前所选文件夹（全部图片 / 未分类 时存入未分类）。</div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section class="group">
-          <div class="card-head"><span class="g-title">预览与提交</span></div>
-          <div class="card-body">
-            <div class="f-row">
-              <div class="field">
-                <label>计划时间</label>
-                <input class="ctl" type="datetime-local" id="time-input" step="60">
-              </div>
-              <div class="field">
-                <label>快捷时间</label>
-                <div class="presets" id="presets" style="display:flex;gap:6px;flex-wrap:wrap">
-                  <button class="chip" type="button" data-preset="today1000">今天 10:00</button>
-                  <button class="chip" type="button" data-preset="today1500">今天 15:00</button>
-                  <button class="chip" type="button" data-preset="today2000">今天 20:00</button>
-                  <button class="chip" type="button" data-preset="tomorrow1000">明天 10:00</button>
-                  <button class="chip" type="button" data-preset="tomorrow1500">明天 15:00</button>
-                  <button class="chip" type="button" data-preset="tomorrow2000">明天 20:00</button>
-                  <span class="preset-sep"></span>
-                  <button class="chip" type="button" data-preset="1h">1小时后</button>
-                  <button class="chip" type="button" data-preset="now">立即发布</button>
-                  <span class="preset-sep"></span>
-                  <button class="chip" type="button" data-shift="-1" title="在当前计划时间上往前 1 小时">− 1 小时</button>
-                  <button class="chip" type="button" data-shift="1" title="在当前计划时间上往后 1 小时">+ 1 小时</button>
-                </div>
-              </div>
-            </div>
-            <div class="field">
-              <label>合成预览</label>
-              <div class="preview" id="preview-text"></div>
-            </div>
-            <div class="sum" id="composeSummary"></div>
+      <section class="tile release-settings">
+        <div class="tile-head"><h2 class="tile-title">账号与定时设置</h2></div>
+        <div class="tile-body">
+          <div class="field"><label>发布账号</label><select class="ctl" id="sel-account"></select></div>
+          <div class="field"><label>动态模板</label><select class="ctl" id="sel-template"></select></div>
+          <div class="foot-hint" id="tplHint"></div>
+          <div class="field">
+            <label>计划时间</label>
+            <input class="ctl" type="datetime-local" id="time-input" step="60">
           </div>
-          <div class="card-foot">
-            <span class="foot-hint">提交后进入「发布队列」等待调度 · 提交后停留在本页，可继续发布下一条</span>
-            <span class="spacer"></span>
-            <button class="btn primary" id="btn-submit">提交发布</button>
+          <div class="field">
+            <label>快捷时间</label>
+            <div class="presets" id="presets" style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="chip" type="button" data-preset="today1000">今天 10:00</button>
+              <button class="chip" type="button" data-preset="today1500">今天 15:00</button>
+              <button class="chip" type="button" data-preset="today2000">今天 20:00</button>
+              <button class="chip" type="button" data-preset="tomorrow1000">明天 10:00</button>
+              <button class="chip" type="button" data-preset="tomorrow1500">明天 15:00</button>
+              <button class="chip" type="button" data-preset="tomorrow2000">明天 20:00</button>
+              <span class="preset-sep"></span>
+              <button class="chip" type="button" data-preset="1h">1小时后</button>
+              <button class="chip" type="button" data-preset="now">立即发布</button>
+              <span class="preset-sep"></span>
+              <button class="chip" type="button" data-shift="-1" title="在当前计划时间上往前 1 小时">− 1 小时</button>
+              <button class="chip" type="button" data-shift="1" title="在当前计划时间上往后 1 小时">+ 1 小时</button>
+            </div>
           </div>
-        </section>
-      </div>
+        </div>
+      </section>
+
+      <section class="tile release-submit">
+        <div class="tile-head"><h2 class="tile-title">预览与提交</h2></div>
+        <div class="tile-body">
+          <div class="field">
+            <label>合成预览</label>
+            <div class="preview" id="preview-text"></div>
+          </div>
+          <div class="sum" id="composeSummary"></div>
+        </div>
+        <div class="tile-foot">
+          <span class="foot-hint">提交后进入「发布队列」等待调度 · 提交后停留在本页，可继续发布下一条</span>
+          <span class="spacer"></span>
+          <button class="btn primary" id="btn-submit">提交发布</button>
+        </div>
+      </section>
     </div>
   </main>
 </div>
 <div id="toast-wrap"></div>
-<script src="/js/common.js?v=22"></script>
-<script src="/js/pages/release.js?v=22"></script>
+<script src="/js/common.js?v=23"></script>
+<script src="/js/pages/release.js?v=23"></script>
 </body>
 </html>

@@ -750,4 +750,14 @@
     finalizeParsing();
     toast('已中止解析', 'info');
   }
+
+  /* 配置卡 sticky 只在高度不超过可视空间时启用：长配置保持 static，
+     避免底部「中止/开始编排」不可达；仅切换布局类，不改变任何编排行为。 */
+  function syncConfigSticky() {
+    const card = document.querySelector('.batch-config');
+    if (!card || typeof card.scrollHeight !== 'number' || !card.classList) return;
+    card.classList.toggle('batch-config--fits', card.scrollHeight <= window.innerHeight - 106);
+  }
+  if (typeof window.addEventListener === 'function') window.addEventListener('resize', syncConfigSticky);
+  syncConfigSticky();
 })();

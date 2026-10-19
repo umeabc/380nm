@@ -108,7 +108,7 @@
       { ic: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>', num: state.libAccounts.length, lab: '账号库已收录账号', cls: '' }
     ];
     $('#metrics').innerHTML = items.map((m) => `
-      <div class="metric">
+      <div class="metric tile tile-stat">
         <div class="m-icon ${m.cls}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${m.ic}</svg></div>
         <div class="m-num">${m.num}</div>
         <div class="m-lab">${m.lab}</div>
@@ -179,7 +179,7 @@
     const box = $('#list');
     if (!list.length) {
       const label = state.status === 'all' ? '' : (STATUSES.find((s) => s.k === state.status) || {}).label;
-      box.innerHTML = `<div class="empty">
+      box.innerHTML = `<div class="empty tile">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M3 9.5h18M8 14h8"/></svg>
         <div class="empty-t">${label ? '暂无「' + label + '」任务' : '没有符合当前筛选条件的任务'}</div>
         <div class="empty-s">调整上方标签或筛选项，或点击右上角「新建发布任务」创建一条</div>
@@ -191,7 +191,7 @@
       return;
     }
     if (state.group === 'none') {
-      box.innerHTML = `<section class="group">${list.map(taskHTML).join('')}</section>`;
+      box.innerHTML = `<section class="group tile tile--flush">${list.map(taskHTML).join('')}</section>`;
     } else {
       const groups = {};
       list.forEach((j) => {
@@ -205,15 +205,15 @@
         const items = groups[k];
         const pend = items.filter((x) => x.status === 'pending').length;
         const col = !!state.collapsed[k];
-        return `<section class="group ${col ? 'collapsed' : ''}">
-          <div class="group-head" data-toggle="${esc(k)}">
+        return `<section class="group tile tile--flush ${col ? 'collapsed' : ''}">
+          <div class="group-head tile-head" data-toggle="${esc(k)}">
             <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
             <span class="g-title">${esc(k)}</span>
             <span class="g-count">${items.length} 项</span>
             ${pend ? `<span class="g-chip">${pend} 条待发布</span>` : ''}
             <span class="g-sum">${col ? '已折叠 · 点击展开' : '点击折叠'}</span>
           </div>
-          <div class="group-body">${items.map(taskHTML).join('')}</div>
+          <div class="group-body tile-body">${items.map(taskHTML).join('')}</div>
         </section>`;
       }).join('');
     }

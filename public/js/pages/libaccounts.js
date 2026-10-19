@@ -13,17 +13,17 @@
   function renderList() {
     const box = $('#lib-list');
     if (!state.accounts.length) {
-      box.innerHTML = `<div class="empty"><div class="empty-t">账号库为空</div><div class="empty-s">添加成员后，发布动态「模板变量」中的「翻译人员 / 嵌字人员」即可一键引用</div></div>`;
+      box.innerHTML = `<div class="empty tile"><div class="empty-t">账号库为空</div><div class="empty-s">添加成员后，发布动态「模板变量」中的「翻译人员 / 嵌字人员」即可一键引用</div></div>`;
       return;
     }
     const onDuty = state.accounts.filter((a) => a.status !== '离岗').length;
-    box.innerHTML = `<section class="group">
-      <div class="group-head" style="cursor:default">
+    box.innerHTML = `<section class="group tile tile--flush">
+      <div class="group-head tile-head" style="cursor:default">
         <span class="g-title">全部账号</span>
         <span class="g-count">${state.accounts.length} 个账号 · 在岗 ${onDuty}</span>
         <span class="g-sum">不区分角色，翻译 / 嵌字 共用</span>
       </div>
-      <div class="group-body">
+      <div class="group-body tile-body">
         ${state.accounts.map((a) => `<div class="task" style="cursor:default;grid-template-columns:minmax(0,1fr) auto;gap:12px">
           <div>
             <div class="t-meta" style="margin-bottom:2px"><span class="t-target">${esc(a.name)}</span>

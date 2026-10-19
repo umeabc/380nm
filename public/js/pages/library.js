@@ -129,7 +129,7 @@
          ${!isAdminAll() ? `<button class="mv" data-libmove="${esc(img.key)}" title="移动到文件夹">${icon('layers', 12)}</button>` : ''}
          <button class="del" data-libdel="${esc(img.key)}" title="删除">×</button>
        </div>`;
-    }).join('') || '<div class="mini-empty">该文件夹暂无图片</div>';
+    }).join('') || '<div class="mini-empty tile-empty">该文件夹暂无图片</div>';
     renderSelectionBar();
   }
 

@@ -4,31 +4,35 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>发布队列 · 380nm</title>
-<link rel="stylesheet" href="/css/app.css?v=22">
+<link rel="stylesheet" href="/css/app.css?v=23">
 </head>
 <body>
 <div class="sidebar" id="sidebar"></div>
 <div class="nav-backdrop" id="nav-backdrop"></div>
 <div class="main-shell">
   <header class="topbar" id="topbar"></header>
-  <main class="page" id="page">
-    <section class="metrics" id="metrics"></section>
-    <div class="tabs" id="tabs"></div>
-    <div class="filterbar" id="filterbar"></div>
-    <div class="toolbar">
-      <span class="fb-label">分组方式 <span class="new-badge">新增</span></span>
-      <div class="seg" id="groupSeg">
-        <button data-g="target" class="on">按发布目标</button>
-        <button data-g="template">按模板</button>
-        <button data-g="none">不分组</button>
-      </div>
-      <div class="tb-right" id="resultInfo"></div>
+  <main class="page tile-page queue-page" id="page">
+    <div class="tile-stack">
+      <section class="metrics queue-metrics" id="metrics"></section>
+      <section class="tile queue-filters">
+        <div class="tabs" id="tabs"></div>
+        <div class="filterbar" id="filterbar"></div>
+        <div class="toolbar tile-head">
+          <span class="fb-label">分组方式 <span class="new-badge">新增</span></span>
+          <div class="seg" id="groupSeg">
+            <button data-g="target" class="on">按发布目标</button>
+            <button data-g="template">按模板</button>
+            <button data-g="none">不分组</button>
+          </div>
+          <div class="tb-right" id="resultInfo"></div>
+        </div>
+      </section>
+      <div id="list" class="tile-stack"></div>
     </div>
-    <div id="list"></div>
   </main>
 </div>
 <div id="toast-wrap"></div>
-<script src="/js/common.js?v=22"></script>
-<script src="/js/pages/queue.js?v=22"></script>
+<script src="/js/common.js?v=23"></script>
+<script src="/js/pages/queue.js?v=23"></script>
 </body>
 </html>

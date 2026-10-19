@@ -7,7 +7,7 @@
       `<a class="list-item" href="/templates/${t.id}">
          <div class="t">${esc(t.name)}</div>
          <div class="s">${(t.variables || []).length} 个变量 · 图片上限 ${t.maxImages} · ${esc(snippet(t.content, 40))}</div>
-       </a>`).join('') || '<div class="empty">暂无模板，点右上角新建</div>';
+       </a>`).join('') || '<div class="empty tile-empty">暂无模板，点右上角新建</div>';
   }
 
   App.boot({

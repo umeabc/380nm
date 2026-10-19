@@ -807,3 +807,214 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
   .qrcode-modal{animation:none}
   .qrcode-placeholder .spin{animation:none}
 }
+/* ==================== 磁吸贴白卡体系（V=23 · 仅在末尾追加，不改既有规则） ==================== */
+/* 1. Token 增量：外壳底色与磁吸贴材质；既有 --r-lg 等与 --sh 继续服务未迁移组件 */
+:root{
+  --bg:#F0F1F3;
+  --tile-radius:14px;
+  --tile-gap:24px;
+  --tile-pad:24px;
+  --tile-shadow:0 2px 4px rgba(19,21,40,.025),0 8px 24px rgba(19,21,40,.045);
+  --tile-shadow-hover:0 4px 8px rgba(19,21,40,.035),0 12px 28px rgba(19,21,40,.065);
+  --tile-motion:160ms ease;
+  --badge-pending-image-bg:rgba(217,119,6,.94);
+  --badge-published-image-bg:rgba(22,163,74,.92);
+}
+
+/* 2. 页面外壳：内容栅格 767 断点，与导航 720 断点分离 */
+.tile-page{padding:24px 24px 56px}
+.tile-stack{display:flex;flex-direction:column;gap:var(--tile-gap);min-width:0}
+.tile-stack>*{margin-top:0;margin-bottom:0;min-width:0}
+.tile-board{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--tile-gap);align-items:start}
+.tile-board>*{grid-column:1/-1;min-width:0;margin:0}
+
+/* 3. 磁吸贴本体与结构件 */
+.tile{background:var(--surface);border:0;border-radius:var(--tile-radius);box-shadow:var(--tile-shadow);padding:var(--tile-pad);margin:0;min-width:0;position:relative;overflow:visible}
+.tile--flush{padding:0}
+.tile--flush>.tile-head{padding:24px 24px 20px;margin:0;background:none;border-bottom:0}
+.tile--flush>.tile-body{padding:0 24px 24px}
+.tile--flush>.tile-foot{margin:0;padding:16px 24px;border-radius:0 0 var(--tile-radius) var(--tile-radius)}
+.tile-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;font-size:15px;font-weight:600;line-height:22px;margin:0 0 20px;background:none;border:0;padding:0}
+.tile-title{font:inherit;margin:0;min-width:0;overflow-wrap:anywhere}
+.tile-meta{margin-left:auto;font-size:12px;font-weight:400;line-height:1.6;color:var(--text-2);display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;overflow-wrap:anywhere}
+.tile-actions{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.tile-body{min-width:0}
+.tile-foot{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid var(--border);background:none}
+.tile-foot .foot-hint{flex:1;min-width:0}
+.tile-foot .spacer{margin-left:auto}
+.tile--interactive{cursor:pointer;transition:transform var(--tile-motion),box-shadow var(--tile-motion)}
+.tile--interactive:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+@media(hover:hover) and (pointer:fine){
+  .tile--interactive:hover{transform:translateY(-2px);box-shadow:var(--tile-shadow-hover)}
+  .tile--interactive:active{transform:none}
+}
+.tile-kv{display:grid;grid-template-columns:minmax(80px,.65fr) minmax(0,1fr);gap:12px 24px;font-size:13px}
+.tile-kv dt{color:var(--text-2)}
+.tile-kv dd{text-align:right;min-width:0;overflow-wrap:anywhere;word-break:break-word}
+.tile-empty,.empty.tile-empty,.mini-empty.tile-empty{padding:40px 16px;border:0;box-shadow:none;background:none;border-radius:0}
+.tile-stat{padding:var(--tile-pad)}
+.tile-stat .m-lab,.tile-stat .stat-note{margin-top:8px}
+/* 整页无数据时允许一张独立空态磁吸贴 */
+.empty.tile{padding:40px 24px;margin:0;border:0;background:var(--surface);border-radius:var(--tile-radius);box-shadow:var(--tile-shadow)}
+
+/* 4. 总览 dashboard：4 指标 + 7 天柱图 + 成功率环 + 最近发布 */
+.dashboard-stats{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--tile-gap);margin:0}
+.dashboard-stats .stat-number{font-size:40px;line-height:1.1;font-weight:600;flex-wrap:wrap;align-items:flex-end;gap:6px 8px}
+.dashboard-stats .stat-number .pct{font-size:16px;line-height:1;color:var(--text-3);font-weight:600}
+.dashboard-stats .stat-note{margin-top:8px;font-size:12px}
+.dashboard-plan,.dashboard-rate,.dashboard-recent{min-width:0}
+.dashboard-plan .card-h{margin-bottom:20px}
+.dashboard-plan .bars{height:130px}
+.dashboard-rate{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:10px}
+.dashboard-rate>.tile-head{width:100%;justify-content:flex-start;margin-bottom:12px}
+.dashboard-rate .ring,.dashboard-rate>.hint{align-self:center}
+
+/* 5. 发布动态 release：图文 / 设置 / 提交三张独立卡 */
+.release-compose>.tile-body{display:flex;flex-direction:column;gap:0}
+.release-section{display:flex;flex-direction:column;gap:12px;min-width:0}
+.release-section+.release-section{margin-top:24px;padding-top:24px;border-top:1px solid var(--border)}
+.release-section-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.release-section-title{font-size:13px;font-weight:600;line-height:1.6}
+.release-section-head .hint-r{margin-left:auto;font-size:11.5px;font-weight:400;color:var(--text-3);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.release-settings>.tile-body,.release-submit>.tile-body{display:flex;flex-direction:column;gap:16px}
+.release-settings .ctl,.release-settings select{width:100%}
+.release-settings .presets{gap:6px}
+/* 发布网格最小单元 92px（仅 release 命名空间，767 以下也不降到 80px） */
+.release-page #img-grid{grid-template-columns:repeat(auto-fill,minmax(92px,1fr))}
+
+/* 6. 发布队列 queue：指标 + 筛选卡 + 分组白卡 */
+.queue-metrics{display:grid;grid-template-columns:minmax(0,1fr);gap:var(--tile-gap);margin:0}
+.queue-filters>.tabs{margin-bottom:16px}
+.queue-filters>.filterbar{background:none;border:0;border-radius:0;box-shadow:none;padding:0;margin-bottom:16px}
+.queue-filters>.toolbar.tile-head{margin-bottom:0}
+.queue-page #list{gap:var(--tile-gap)}
+.queue-page .group.tile{overflow:visible}
+.queue-page .group.tile>.group-head{border-radius:var(--tile-radius) var(--tile-radius) 0 0}
+.queue-page .group.tile>.group-body.tile-body{padding:0}
+
+/* 7. 图库 library：目录卡 + 图库卡 */
+.library-content .storage-bar{margin-bottom:16px}
+.library-content .lib-toolbar{margin-top:20px;padding:0 0 16px;margin-bottom:16px}
+.library-folders #folder-list{min-width:0}
+.library-folders .btn{justify-content:center}
+
+/* 8. 账号 / 用户 / 模板 / 设置 / 日志 / Danbooru 外壳级贴合 */
+.tile-page .card.mt.tile{margin-top:0}
+.pagehead.tile{margin:0;padding:24px}
+.templates-card{min-width:0}
+.templates-card #tpl-list{min-width:0}
+.templates-card .list-item{margin-bottom:10px}
+.templates-card .list-item:last-child{margin-bottom:0}
+
+/* 9. 批量编排 batch：只换两张一级卡材质与 4/8 布局 */
+.batch-board{grid-template-columns:minmax(0,1fr)}
+.batch-board .batch-config,.batch-board .batch-results{grid-column:1/-1}
+.batch-board .batch-config{margin-bottom:0}
+.batch-board .batch-output{margin-bottom:0}
+.batch-output>.batch-state{margin-top:4px}
+
+/* 10. 任务详情 job：grid2 成为 12/2/1 板面，信息表使用键值网格 */
+.job-board>.stack{grid-column:1/-1;gap:var(--tile-gap)}
+.job-board .card.tile{margin-bottom:0}
+.job-board .card-h.tile-head{margin-bottom:14px}
+
+/* 11. 登录：去渐变壳，单卡 14px */
+.login-wrap{background:var(--bg)}
+.login-card.tile{padding:32px 34px;border:0;border-radius:var(--tile-radius);box-shadow:var(--tile-shadow)}
+
+/* 12. 待发布图片角标（§4）：共用 .pend-badge 视觉，release 只负责定位 */
+.pend-badge,.pub-badge{border-radius:999px}
+.pend-badge{background:var(--badge-pending-image-bg)}
+.pub-badge{background:var(--badge-published-image-bg)}
+.release-pend-badge{position:absolute;top:4px;right:4px;bottom:auto;left:auto;z-index:1;pointer-events:none;border-radius:999px;background:var(--badge-pending-image-bg);color:#fff;font-size:10px;font-weight:700;line-height:16px;padding:0 6px}
+.pill{line-height:18px}
+
+/* 13. 响应式：768–1279 两列 */
+@media(min-width:768px) and (max-width:1279px){
+  .tile-board{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .tile-board>*{grid-column:span 1}
+  .dashboard-stats{grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dashboard-plan,.dashboard-rate{grid-column:span 1}
+  .dashboard-recent{grid-column:1/-1}
+  .release-compose{grid-column:1/-1}
+  .release-settings,.release-submit{grid-column:span 1}
+  .library-folders,.library-content{grid-column:span 1}
+  .queue-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .batch-board .batch-config,.batch-board .batch-results{grid-column:span 1}
+  .job-board>.stack{grid-column:span 1}
+}
+
+/* 14. 响应式：≥1280 十二列板面 */
+@media(min-width:1280px){
+  .tile-board{grid-template-columns:repeat(12,minmax(0,1fr))}
+  .tile-board>*{grid-column:1/-1}
+  .dashboard-stats{grid-column:1/-1;grid-template-columns:repeat(12,minmax(0,1fr))}
+  .dashboard-stats>.stat-card{grid-column:span 3}
+  .dashboard-plan{grid-column:span 8}
+  .dashboard-rate{grid-column:span 4}
+  .dashboard-recent{grid-column:1/-1}
+  .release-compose{grid-column:span 8;grid-row:span 2}
+  .release-settings{grid-column:span 4}
+  .release-submit{grid-column:span 4}
+  .library-folders{grid-column:span 3}
+  .library-content{grid-column:span 9}
+  .queue-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .batch-board .batch-config{grid-column:span 4;position:sticky;top:82px;max-height:calc(100dvh - 106px);overflow-y:auto;overscroll-behavior:contain}
+  .batch-board .batch-results{grid-column:span 8}
+  .job-board>.stack{grid-column:span 6}
+}
+
+/* 15. 响应式：≤767 单列、卡内 16px；721–767 仍由原 rail 接管外壳 */
+@media(max-width:767px){
+  .tile-page{padding:16px 16px 48px}
+  .tile-page .tile{padding:16px}
+  .tile-page .tile.empty.tile{padding:32px 16px}
+  .tile-page .tile--flush{padding:0}
+  .tile--flush>.tile-head{padding:16px 16px 14px}
+  .tile--flush>.tile-body{padding:0 16px 16px}
+  .tile--flush>.tile-foot{padding:12px 16px}
+  .tile-head{margin-bottom:16px}
+  .tile-page .f-row{grid-template-columns:1fr}
+  .tile-page .filterbar .ctl{min-width:0;flex:1}
+  .dashboard-stats{grid-template-columns:minmax(0,1fr)}
+  .dashboard-stats .stat-number{font-size:32px}
+  .dashboard-rate>.tile-head{margin-bottom:10px}
+  .dashboard-plan,.dashboard-rate,.dashboard-recent{grid-column:1/-1}
+  .queue-metrics{grid-template-columns:minmax(0,1fr)}
+  .release-settings,.release-submit,.release-compose{grid-column:1/-1}
+  .library-folders,.library-content{grid-column:1/-1}
+  .batch-config,.batch-results{grid-column:1/-1}
+  .batch-board .batch-config{position:static;max-height:none;overflow:visible}
+  .job-board>.stack{grid-column:1/-1}
+  .login-card.tile{padding:24px}
+  .tile-kv{gap:12px}
+  .tile-page .btn,.tile-page .tab,.tile-page .chip,.tile-page .pick-pager button{min-height:40px}
+  .tile-page .icon-btn{width:40px;height:40px}
+  .pagehead.tile{padding:16px}
+}
+
+/* 16. 触屏常显既有悬停操作，不新增入口 */
+@media(hover:none){
+  .lib-frow .icon-btn{opacity:1}
+  .cell .del,.cell .mv,.thumb-card .rm{display:grid}
+}
+
+/* 17. 减少动态效果 */
+@media(prefers-reduced-motion:reduce){
+  .tile--interactive{transition:none}
+  .tile--interactive:hover{transform:none;box-shadow:var(--tile-shadow)}
+}
+/* 18. 迁移实例的圆角与悬停补丁（追加在末尾，保持 0 删除） */
+.queue-page .group.tile>.group-head.tile-head:hover{background:#F6F7FC}
+.queue-page .group.tile>.group-head.tile-head:active{background:#F1F2F8}
+.queue-page .group.tile>.group-body.tile-body>.task:first-child{border-top:0}
+.queue-page .group.tile>.group-body.tile-body>.task:last-child{border-radius:0 0 var(--tile-radius) var(--tile-radius)}
+.queue-page .group.tile.collapsed>.group-head{border-radius:var(--tile-radius)}
+.queue-page .empty.tile{border-radius:var(--tile-radius)}
+.img-grid>.mini-empty,.img-grid>.empty{grid-column:1/-1}
+@media(min-width:1280px){
+  .batch-board .batch-config{position:static;max-height:none;overflow:visible}
+  .batch-board .batch-config.batch-config--fits{position:sticky;top:82px}
+}
+/* 19. Danbooru 工具条与卡头 16px 区隔（仅该页使用） */
+.db-toolbar{margin-bottom:16px}
