@@ -204,7 +204,7 @@ test('账号卡状态优先级：nav异常 > 续期异常 > 待检测 > 无自�
   assert.deepEqual(plain(QR.statusLines({ cookieStatus: { ok: true } })), []);
 });
 
-test('页面静态约束：无 localStorage/无轮询叠加/无第三方/无原始登录URL/版本22/common零改动', () => {
+test('页面静态约束：无 localStorage/无轮询叠加/无第三方/无原始登录URL/版本24/common零改动', () => {
   const page = read('public/js/pages/accounts.js');
   assert.doesNotMatch(page, /localStorage|sessionStorage/, 'QR/token 绝不做浏览器持久化');
   assert.doesNotMatch(page, /setInterval/, '必须串行 setTimeout 轮询，不用 setInterval 叠加');
@@ -230,8 +230,8 @@ test('页面静态约束：无 localStorage/无轮询叠加/无第三方/无原�
   assert.match(html, /每30分钟一次/);
   assert.match(html, /最多每24小时检查或尝试一次/);
   assert.doesNotMatch(html, /立即续期/);
-  assert.match(html, /app\.css\?v=23/);
-  assert.match(html, /accounts\.js\?v=23/);
+  assert.match(html, /app\.css\?v=24/);
+  assert.match(html, /accounts\.js\?v=24/);
 
   const css = read('public/css/app.css');
   for (const cls of ['.qrcode-mask', '.qrcode-image-wrap', '.qrcode-status.is-scanned', '.qrcode-status.is-error', '.ck-badge.qrcode-no-refresh', '.qrcode-migration']) {

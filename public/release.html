@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>发布动态 · 380nm</title>
-<link rel="stylesheet" href="/css/app.css?v=23">
+<link rel="stylesheet" href="/css/app.css?v=24">
 </head>
 <body>
 <div class="sidebar" id="sidebar"></div>
@@ -65,7 +65,42 @@
 
             <div class="foot-hint">话题与 @提及 已并入「模板变量」区：与日期、正文等变量同处一个编辑上下文，@提及 可直接插到任意变量的光标处。</div>
           </div>
+        </div>
+      </section>
 
+      <section class="tile release-settings">
+        <div class="tile-head"><h2 class="tile-title">账号与定时设置</h2></div>
+        <div class="tile-body">
+          <div class="field"><label>发布账号</label><select class="ctl" id="sel-account"></select></div>
+          <div class="field"><label>动态模板</label><select class="ctl" id="sel-template"></select></div>
+          <div class="foot-hint" id="tplHint"></div>
+          <div class="field">
+            <label>计划时间</label>
+            <input class="ctl" type="datetime-local" id="time-input" step="60">
+          </div>
+          <div class="field">
+            <label>快捷时间</label>
+            <div class="presets" id="presets" style="display:flex;gap:6px;flex-wrap:wrap">
+              <button class="chip" type="button" data-preset="today1000">今天 10:00</button>
+              <button class="chip" type="button" data-preset="today1500">今天 15:00</button>
+              <button class="chip" type="button" data-preset="today2000">今天 20:00</button>
+              <button class="chip" type="button" data-preset="tomorrow1000">明天 10:00</button>
+              <button class="chip" type="button" data-preset="tomorrow1500">明天 15:00</button>
+              <button class="chip" type="button" data-preset="tomorrow2000">明天 20:00</button>
+              <span class="preset-sep"></span>
+              <button class="chip" type="button" data-preset="1h">1小时后</button>
+              <button class="chip" type="button" data-preset="now">立即发布</button>
+              <span class="preset-sep"></span>
+              <button class="chip" type="button" data-shift="-1" title="在当前计划时间上往前 1 小时">− 1 小时</button>
+              <button class="chip" type="button" data-shift="1" title="在当前计划时间上往后 1 小时">+ 1 小时</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tile release-fetchimg">
+        <div class="tile-head"><h2 class="tile-title">链接抓取与配图</h2></div>
+        <div class="tile-body">
           <div class="release-section">
             <div class="release-section-head">
               <span class="release-section-title">链接抓取</span>
@@ -109,36 +144,6 @@
         </div>
       </section>
 
-      <section class="tile release-settings">
-        <div class="tile-head"><h2 class="tile-title">账号与定时设置</h2></div>
-        <div class="tile-body">
-          <div class="field"><label>发布账号</label><select class="ctl" id="sel-account"></select></div>
-          <div class="field"><label>动态模板</label><select class="ctl" id="sel-template"></select></div>
-          <div class="foot-hint" id="tplHint"></div>
-          <div class="field">
-            <label>计划时间</label>
-            <input class="ctl" type="datetime-local" id="time-input" step="60">
-          </div>
-          <div class="field">
-            <label>快捷时间</label>
-            <div class="presets" id="presets" style="display:flex;gap:6px;flex-wrap:wrap">
-              <button class="chip" type="button" data-preset="today1000">今天 10:00</button>
-              <button class="chip" type="button" data-preset="today1500">今天 15:00</button>
-              <button class="chip" type="button" data-preset="today2000">今天 20:00</button>
-              <button class="chip" type="button" data-preset="tomorrow1000">明天 10:00</button>
-              <button class="chip" type="button" data-preset="tomorrow1500">明天 15:00</button>
-              <button class="chip" type="button" data-preset="tomorrow2000">明天 20:00</button>
-              <span class="preset-sep"></span>
-              <button class="chip" type="button" data-preset="1h">1小时后</button>
-              <button class="chip" type="button" data-preset="now">立即发布</button>
-              <span class="preset-sep"></span>
-              <button class="chip" type="button" data-shift="-1" title="在当前计划时间上往前 1 小时">− 1 小时</button>
-              <button class="chip" type="button" data-shift="1" title="在当前计划时间上往后 1 小时">+ 1 小时</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <section class="tile release-submit">
         <div class="tile-head"><h2 class="tile-title">预览与提交</h2></div>
         <div class="tile-body">
@@ -158,7 +163,7 @@
   </main>
 </div>
 <div id="toast-wrap"></div>
-<script src="/js/common.js?v=23"></script>
-<script src="/js/pages/release.js?v=23"></script>
+<script src="/js/common.js?v=24"></script>
+<script src="/js/pages/release.js?v=24"></script>
 </body>
 </html>

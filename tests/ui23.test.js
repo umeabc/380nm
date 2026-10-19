@@ -15,17 +15,17 @@ const pages = fs.readdirSync(path.join(root, 'public'))
 /* 开发辅助入口不做视觉改版，也不引用共享静态资源 */
 const formalPages = pages.filter((f) => !f.startsWith('_'));
 
-test('静态资源统一 V=23：无 v22 残留，缩略图 ?w= 未被误改', () => {
+test('静态资源统一 V=24：无 v23 残留，缩略图 ?w= 未被误改', () => {
   for (const f of formalPages) {
     const html = read('public/' + f);
-    assert.doesNotMatch(html, /v=22/, `${f} 仍有 v=22`);
-    assert.match(html, /\/css\/app\.css\?v=23/, `${f} 未使用 app.css?v=23`);
+    assert.doesNotMatch(html, /v=2[3]/, `${f} 仍有上一版版本号`);
+    assert.match(html, /\/css\/app\.css\?v=24/, `${f} 未使用 app.css?v=24`);
     const scripts = html.match(/<script[^>]+src="[^"]+"/g) || [];
     assert.ok(scripts.length > 0, `${f} 缺少脚本引用`);
-    for (const s of scripts) assert.match(s, /\?v=23"/, `${f} 脚本版本不是 23：${s}`);
+    for (const s of scripts) assert.match(s, /\?v=24"/, `${f} 脚本版本不是 24：${s}`);
   }
   // batch 另有 schedule.js，同样不得混版
-  assert.match(read('public/batch.html'), /src="\/js\/schedule\.js\?v=23"/);
+  assert.match(read('public/batch.html'), /src="\/js\/schedule\.js\?v=24"/);
   // 缩略图尺寸仍是 API 参数，不参与静态版本号
   const common = read('public/js/common.js');
   assert.match(common, /function imageSrc\(image, w = 240\)/);
@@ -126,14 +126,15 @@ test('dashboard：4 指标 / 柱图 / 环图 / 最近发布全部显式 tile', (
   assert.doesNotMatch(read('public/js/pages/dashboard.js'), /<img/);
 });
 
-test('release：图文 / 设置 / 提交三张独立卡，字段 ID 唯一且未丢', () => {
+test('release：图文 / 设置 / 抓取配图 / 提交四张独立卡，字段 ID 唯一且未丢', () => {
   const html = read('public/release.html');
   assert.match(html, /class="page tile-page release-page"/);
   assert.match(html, /class="tile-board release-board"/);
   assert.match(html, /class="tile release-compose"/);
   assert.match(html, /class="tile release-settings"/);
+  assert.match(html, /class="tile release-fetchimg"/);
   assert.match(html, /class="tile release-submit"/);
-  assert.equal((html.match(/class="release-section"/g) || []).length, 4, '图文卡内四个小分区');
+  assert.equal((html.match(/class="release-section"/g) || []).length, 4, '图文与抓取配图卡内共四个小分区');
   assert.match(html, /class="tile-foot"/);
   for (const id of ['no-account-warn', 'dyn-title', 'titleCounter', 'var-fields', 'var-people',
     'var-topic', 'var-at', 'link-input', 'btn-parse', 'fetchState', 'creditInput', 'btn-insert-credit',
@@ -142,15 +143,25 @@ test('release：图文 / 设置 / 提交三张独立卡，字段 ID 唯一且未
     'composeSummary', 'btn-submit']) {
     assert.equal((html.match(new RegExp(`id="${id}"`, 'g')) || []).length, 1, `#${id} 必须唯一存在`);
   }
-  // 时间/预设移到设置卡，话题与 @ 仍在模板变量上下文
-  const settings = html.slice(html.indexOf('release-settings'), html.indexOf('release-submit'));
+  // 时间/预设留在设置卡，话题与 @ 仍在模板变量上下文，链接抓取与配图整体移入独立卡
+  const settings = html.slice(html.indexOf('release-settings'), html.indexOf('release-fetchimg'));
   assert.match(settings, /id="time-input"/);
   assert.match(settings, /id="presets"/);
   assert.match(settings, /id="sel-account"/);
   const compose = html.slice(html.indexOf('release-compose'), html.indexOf('release-settings'));
   assert.match(compose, /id="var-topic"/);
   assert.match(compose, /id="var-at"/);
-  assert.match(compose, /id="img-grid"/);
+  assert.doesNotMatch(compose, /id="img-grid"/, '配图不得留在待发图文卡');
+  const fetchimg = html.slice(html.indexOf('release-fetchimg'), html.indexOf('release-submit'));
+  assert.match(fetchimg, /id="link-input"/);
+  assert.match(fetchimg, /id="img-grid"/);
+  assert.match(fetchimg, /id="pick-folders"/);
+  assert.match(fetchimg, /id="sel-strip"/);
+  // DOM 顺序固定，靠 grid-column 定位而非 order
+  const order = ['release-compose', 'release-settings', 'release-fetchimg', 'release-submit']
+    .map((c) => html.indexOf(c));
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'DOM 顺序必须固定');
+  assert.doesNotMatch(read('public/css/app.css'), /\.release-[^{]*\{[^}]*[;{]order:/, '不得用 order 改布局');
 });
 
 test('queue：筛选卡 + 分组白卡由 HTML 与 JS 共同保持', () => {
