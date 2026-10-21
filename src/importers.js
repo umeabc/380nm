@@ -534,10 +534,122 @@ async function parsePixivWork(url, workId, opts, onProgress) {
   };
 }
 
+/* ---------------- X GraphQL（登录用户主路） ----------------
+ * 受限/删推对未登录 syndication 返回 TweetTombstone（HTTP 200 无媒体），
+ * x.com 页面是 SPA（HTML 只有头像，推文图由 GraphQL 异步加载）。
+ * 带 auth_token+ct0 直接调 web 端 GraphQL 才能取到受限推文媒体。
+ * 做法参考 github.com/unkmonster/tmd：固定公开 Bearer + X-Csrf-Token + cookie 三头缺一不可。
+ * 注意：queryId/features 是社区逆向值，X 前端更新可能失效，届时更新常量即可。
+ */
+const X_GRAPHQL_HOST = 'https://x.com';
+const X_GRAPHQL_BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
+const TWEET_RESULT_QUERY_ID = '0hWvDhmW8YQ-S_ib3azIrw';
+const TWEET_RESULT_FEATURES = JSON.stringify({
+  rweb_tipjar_consumption_enabled: true,
+  responsive_web_graphql_exclude_directive_enabled: true,
+  verified_phone_label_enabled: false,
+  creator_subscriptions_tweet_preview_api_enabled: true,
+  responsive_web_graphql_timeline_navigation_enabled: true,
+  responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
+  communities_web_enable_tweet_community_results_fetch: true,
+  articles_preview_enabled: true,
+  tweetypie_unmention_optimization_enabled: true,
+  responsive_web_edit_tweet_api_enabled: true,
+  graphql_is_translatable_rweb_tweet_is_translatable_enabled: true,
+  view_counts_everywhere_api_enabled: true,
+  longform_notetweets_consumption_enabled: true,
+  responsive_web_twitter_article_tweet_consumption_enabled: true,
+  tweet_awards_web_tipping_enabled: false,
+  freedom_of_speech_not_reach_fetch_enabled: true,
+  standardized_nudges_misinfo: true,
+  tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled: true,
+  rweb_video_timestamps_enabled: true,
+  longform_notetweets_rich_text_read_enabled: true,
+  longform_notetweets_inline_media_enabled: true,
+  responsive_web_enhance_cards_enabled: false
+});
+
+/** 登录态 GraphQL 拉取单条推文（受限推文唯一有效路径）。
+ * 返回 {text, createdAt, handle, author, mediaUrls}；推文删除/受限不可见时返回 null。 */
+async function fetchTweetViaGraphQL(workId, { authToken, ct0, proxy, timeout }) {
+  const f = makeFetch(proxy);
+  const params = new URLSearchParams({
+    variables: JSON.stringify({ tweetId: String(workId), withCommunity: false, includePromotedContent: false, withVoice: false }),
+    features: TWEET_RESULT_FEATURES
+  });
+  const headers = {
+    'user-agent': UA,
+    referer: X_GRAPHQL_HOST + '/',
+    accept: 'application/json',
+    authorization: 'Bearer ' + X_GRAPHQL_BEARER,
+    'x-csrf-token': ct0,
+    cookie: `auth_token=${authToken}; ct0=${ct0}`
+  };
+  let payload;
+  try {
+    const r = await f(`${X_GRAPHQL_HOST}/i/api/graphql/${TWEET_RESULT_QUERY_ID}/TweetResultByRestId?${params}`, {
+      headers, signal: AbortSignal.timeout(timeout)
+    });
+    if (r.status === 401 || r.status === 403) throw new ImportError('X 凭据失效或权限不足（auth_token/ct0 已过期，请重新获取）', 'restricted');
+    if (r.status === 429) throw new ImportError('触发 X 接口频控，请稍后再试', 'timeout');
+    if (!r.ok) throw new ImportError(`X GraphQL 请求失败（HTTP ${r.status}）`, 'network');
+    payload = await r.json();
+  } catch (e) {
+    if (e instanceof ImportError) throw e;
+    throw new ImportError('连接 X 失败（GraphQL 网络错误：' + ((e.cause && e.cause.message) || e.message) + '）', 'timeout');
+  }
+  if (payload && Array.isArray(payload.errors) && payload.errors.length) {
+    const first = payload.errors[0] || {};
+    if (first.code === 144 || /not found/i.test(first.message || '')) return null; // 删推/不存在 → 落回 syndication 文案
+    if (first.code === 32 || first.code === 239 || /authentic/i.test(first.message || '')) throw new ImportError('X 凭据失效或权限不足（auth_token/ct0 已过期，请重新获取）', 'restricted');
+    if (first.code === 88) throw new ImportError('触发 X 接口频控，请稍后再试', 'timeout');
+    throw new ImportError('X GraphQL 返回错误（code ' + (first.code || '?') + '）', 'network');
+  }
+  let result = payload && payload.data && payload.data.tweetResult && payload.data.tweetResult.result;
+  if (!result || result.__typename === 'TweetTombstone') return null;
+  if (result.__typename === 'TweetWithVisibilityResults') result = result.tweet; // 受限可见推文：媒体在嵌套层
+  const legacy = result.legacy || {};
+  const mediaUrls = [];
+  for (const md of ((legacy.extended_entities || {}).media || [])) {
+    if (md.type === 'photo' && md.media_url_https) mediaUrls.push(md.media_url_https);
+  }
+  const core = (result.core || {}).user_results || {};
+  const uleg = ((core.result || {}).legacy) || {};
+  return {
+    text: legacy.full_text || '',
+    createdAt: legacy.created_at || '',
+    handle: uleg.screen_name || '',
+    author: uleg.name || uleg.screen_name || '',
+    mediaUrls
+  };
+}
+
 async function parseXWork(url, workId, opts, onProgress) {
   const { authToken, ct0, proxy, timeout } = opts;
   const f = makeFetch(proxy);
   let data = null;
+
+  // 有凭据：GraphQL 主路（受限推文唯一可行路径）；失败且非确定性错误时落 syndication 兜底
+  let gqlBlocked = false;
+  if (authToken && ct0) {
+    try {
+      const gql = await fetchTweetViaGraphQL(workId, { authToken, ct0, proxy, timeout });
+      if (gql && gql.mediaUrls.length) {
+        data = { text: gql.text, created_at: gql.createdAt, user: { screen_name: gql.handle, name: gql.author }, mediaDetails: gql.mediaUrls.map(u => ({ media_url_https: u })) };
+      } else if (gql && !gql.mediaUrls.length) {
+        // GraphQL 确认可见但纯文字 → 直接报错，不必再试 syndication
+        onProgress(1, '作品页已打开');
+        throw new ImportError('该推文中未找到图片（纯文字推文）', 'restricted');
+      } else {
+        gqlBlocked = true; // tombstone：落 syndication 兜底（未登录可见的极少数情况）
+      }
+    } catch (e) {
+      if (e instanceof ImportError && (e.code === 'restricted' || e.message.includes('频控'))) throw e; // 凭据/频控类确定性错误直接抛
+      gqlBlocked = true;
+    }
+  }
+
+  if (!data) {
   try {
     const r = await f(`https://cdn.syndication.twimg.com/tweet-result?id=${workId}&lang=en&token=x`, {
       headers: { 'user-agent': UA, referer: 'https://x.com/', accept: 'application/json' },
@@ -548,6 +660,7 @@ async function parseXWork(url, workId, opts, onProgress) {
   } catch (e) {
     if (e instanceof ImportError) throw e;
     throw new ImportError('连接 X 失败（网络错误：' + ((e.cause && e.cause.message) || e.message) + '）', 'timeout');
+  }
   }
   if (!data) throw new ImportError('获取推文信息失败（HTTP 异常，可能受限）', 'network');
 

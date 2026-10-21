@@ -2,6 +2,10 @@
 
 按时间倒序记录 380nm 的功能与修复。日期为提交日期。
 
+## 2026-10-21 · X 受限推文抓取修复
+
+自动抓图支持受限/受保护推文：配置 auth_token/ct0 后，抓取优先走 X 登录态 GraphQL 接口（TweetResultByRestId，带公开 Bearer + X-Csrf-Token 三头认证），受限可见推文（TweetWithVisibilityResults）从嵌套层取图；未配置凭据或 GraphQL 失败时回落 syndication 公开接口。纯文字/删推/凭据失效/频控有独立错误文案。参考 unkmonster/tmd 的认证配方。
+
 ## 2026-10-19 · 磁吸贴改版
 
 - 全站正式页面按显式 `.tile` 实例迁移浅灰板面、14px 白卡与 24px 间距；内容 767px 断点与原导航 720px 断点分离。
