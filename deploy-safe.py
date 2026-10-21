@@ -38,7 +38,8 @@ def main():
     print(f'[1/6] 连接到 {HOST}...')
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(HOST, 22, USER, PASSWORD)
+    port = int(os.environ.get('DEPLOY_PORT', '22'))
+    ssh.connect(HOST, port, USER, PASSWORD)
 
     try:
         sftp = ssh.open_sftp()
