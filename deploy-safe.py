@@ -9,7 +9,9 @@ import paramiko
 import os
 import sys
 
-HOST = os.environ.get('DEPLOY_HOST', '192.0.2.20')
+HOST = os.environ.get('DEPLOY_HOST', '')
+if not HOST:
+    raise SystemExit('请通过环境变量 DEPLOY_HOST 指定部署目标地址')
 USER = os.environ.get('DEPLOY_USER', 'root')
 PASSWORD = os.environ.get('DEPLOY_PASSWORD', '')  # 不要硬编码，用环境变量传入
 REMOTE_DIR = os.environ.get('DEPLOY_REMOTE_DIR', '/opt/bili-dyn-publisher')
