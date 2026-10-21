@@ -230,8 +230,8 @@ test('页面静态约束：无 localStorage/无轮询叠加/无第三方/无原�
   assert.match(html, /每30分钟一次/);
   assert.match(html, /最多每24小时检查或尝试一次/);
   assert.doesNotMatch(html, /立即续期/);
-  assert.match(html, /app\.css\?v=24/);
-  assert.match(html, /accounts\.js\?v=24/);
+  assert.match(html, /app\.css\?v=25/);
+  assert.match(html, /accounts\.js\?v=25/);
 
   const css = read('public/css/app.css');
   for (const cls of ['.qrcode-mask', '.qrcode-image-wrap', '.qrcode-status.is-scanned', '.qrcode-status.is-error', '.ck-badge.qrcode-no-refresh', '.qrcode-migration']) {

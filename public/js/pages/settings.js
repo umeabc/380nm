@@ -14,6 +14,38 @@
       $('#set-ct0').placeholder = ph(s.twitterCt0, s.hasTwitterCt0);
       $('#set-proxy').value = s.importProxy || '';
 
+      // X 账号测试：读服务端**已保存**的凭据真实请求 X；响应到达前二次点击无效
+      let xTesting = false;
+      $('#btn-x-test').addEventListener('click', async () => {
+        if (xTesting) return;
+        const btn = $('#btn-x-test');
+        const box = $('#x-test-result');
+        xTesting = true;
+        btn.disabled = true;
+        btn.textContent = '测试中…';
+        box.className = 'x-test-hint';
+        box.textContent = '';
+        try {
+          const r = await api('POST', '/api/settings/x-test');
+          if (r && r.ok) {
+            const handle = r.handle || '';
+            const name = r.name && r.name !== handle && r.name !== handle.replace(/^@/, '') ? r.name + ' ' : '';
+            box.className = 'x-test-hint ck-ok';
+            box.textContent = '凭据可用：' + name + handle;
+          } else {
+            box.className = 'x-test-hint ck-bad';
+            box.textContent = (r && r.reason) || '测试失败，请稍后再试';
+          }
+        } catch (e) {
+          box.className = 'x-test-hint ck-bad';
+          box.textContent = e.message;
+        } finally {
+          xTesting = false;
+          btn.disabled = false;
+          btn.textContent = 'X账号测试';
+        }
+      });
+
       $('#btn-save').addEventListener('click', async () => {
         try {
           const body = { importProxy: $('#set-proxy').value.trim() };

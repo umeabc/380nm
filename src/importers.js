@@ -569,6 +569,19 @@ const TWEET_RESULT_FEATURES = JSON.stringify({
   responsive_web_enhance_cards_enabled: false
 });
 
+/** X web 端登录态请求头：固定公开 Bearer + X-Csrf-Token + cookie 三头缺一不可。
+ * GraphQL 抓取与账号测试共用同一构造，凭据拼接只此一处。 */
+function xAuthHeaders(authToken, ct0) {
+  return {
+    'user-agent': UA,
+    referer: X_GRAPHQL_HOST + '/',
+    accept: 'application/json',
+    authorization: 'Bearer ' + X_GRAPHQL_BEARER,
+    'x-csrf-token': ct0,
+    cookie: `auth_token=${authToken}; ct0=${ct0}`
+  };
+}
+
 /** 登录态 GraphQL 拉取单条推文（受限推文唯一有效路径）。
  * 返回 {text, createdAt, handle, author, mediaUrls}；推文删除/受限不可见时返回 null。 */
 async function fetchTweetViaGraphQL(workId, { authToken, ct0, proxy, timeout }) {
@@ -577,14 +590,7 @@ async function fetchTweetViaGraphQL(workId, { authToken, ct0, proxy, timeout }) 
     variables: JSON.stringify({ tweetId: String(workId), withCommunity: false, includePromotedContent: false, withVoice: false }),
     features: TWEET_RESULT_FEATURES
   });
-  const headers = {
-    'user-agent': UA,
-    referer: X_GRAPHQL_HOST + '/',
-    accept: 'application/json',
-    authorization: 'Bearer ' + X_GRAPHQL_BEARER,
-    'x-csrf-token': ct0,
-    cookie: `auth_token=${authToken}; ct0=${ct0}`
-  };
+  const headers = xAuthHeaders(authToken, ct0);
   let payload;
   try {
     const r = await f(`${X_GRAPHQL_HOST}/i/api/graphql/${TWEET_RESULT_QUERY_ID}/TweetResultByRestId?${params}`, {
@@ -622,6 +628,46 @@ async function fetchTweetViaGraphQL(workId, { authToken, ct0, proxy, timeout }) 
     author: uleg.name || uleg.screen_name || '',
     mediaUrls
   };
+}
+
+/* ---------------- X 账号测试 ----------------
+ * 用已保存的 auth_token/ct0 真实请求 verify_credentials（与 GraphQL 同一套三头），
+ * 只判断凭据是否可用，不读推文、不下载任何媒体。返回结构化结果，调用方不得回显凭据。
+ */
+const X_TEST_TIMEOUT = 15000;
+
+async function testXCredentials({ authToken = '', ct0 = '', proxy = '', timeout = X_TEST_TIMEOUT } = {}) {
+  const at = String(authToken || '').trim();
+  const csrf = String(ct0 || '').trim();
+  if (!at || !csrf) return { ok: false, reason: '请先填写并保存 auth_token 和 ct0' };
+
+  const f = makeFetch(proxy);
+  const ms = Math.max(1000, Math.min(30000, Number(timeout) || X_TEST_TIMEOUT));
+  let r;
+  try {
+    r = await f(`${X_GRAPHQL_HOST}/i/api/1.1/account/verify_credentials.json?skip_status=true&include_entities=false`, {
+      headers: xAuthHeaders(at, csrf), signal: AbortSignal.timeout(ms)
+    });
+  } catch (e) {
+    return { ok: false, reason: '连接 X 失败（请检查代理设置）' };
+  }
+
+  if (r.status === 401 || r.status === 403) {
+    return { ok: false, reason: '凭据失效或不匹配（auth_token/ct0 已过期，或触发风控，请重新获取）' };
+  }
+  if (r.status === 429) return { ok: false, reason: '触发 X 频控，请稍后再试' };
+  if (!r.ok) return { ok: false, reason: `X 返回异常状态（HTTP ${r.status}），请稍后再试` };
+
+  const j = await r.json().catch(() => null);
+  // 少数情况下 X 以 200 返回错误体（code 32/353 凭据、88 频控）
+  const err = j && Array.isArray(j.errors) && j.errors[0];
+  if (err && (err.code === 32 || err.code === 353)) {
+    return { ok: false, reason: '凭据失效或不匹配（auth_token/ct0 已过期，或触发风控，请重新获取）' };
+  }
+  if (err && err.code === 88) return { ok: false, reason: '触发 X 频控，请稍后再试' };
+  const sn = j && j.screen_name;
+  if (!sn) return { ok: false, reason: 'X 未返回账号信息（凭据可能已失效，请重新获取）' };
+  return { ok: true, handle: '@' + sn, name: j.name || sn };
 }
 
 async function parseXWork(url, workId, opts, onProgress) {
@@ -714,6 +760,7 @@ async function parseXWork(url, workId, opts, onProgress) {
   };
 }
 
+module.exports.testXCredentials = testXCredentials;
 module.exports.parseWork = parseWork;
 module.exports.parseSource = parseSource;
 module.exports.downloadImage = downloadImage;

@@ -2,6 +2,13 @@
 
 按时间倒序记录 380nm 的功能与修复。日期为提交日期。
 
+## 2026-10-21 · X 账号测试
+
+- 全站设置页保存按钮旁新增「X账号测试」：点击后由 `POST /api/settings/x-test`（仅管理员）用**当前已保存**的 `twitterAuth`/`twitterCt0`/`importProxy` 真实请求 X，成功绿显「昵称 @handle」，失败红显原因；请求期间按钮禁用（文案「测试中…」），响应到达前重复点击无效，凭据输入框行为不变。
+- 后端在 `src/importers.js` 新增 `testXCredentials({authToken,ct0,proxy,timeout})`，请求 `GET /i/api/1.1/account/verify_credentials.json`；认证头构造抽为公共 `xAuthHeaders()`，与受限推文 GraphQL 抓取共用同一套 Bearer + X-Csrf-Token + cookie，三头逻辑只此一份。15 秒超时。
+- 结果映射：成功 `{ok:true,handle:'@xxx',name}`；401/403 或 200 内 code 32/353 → 凭据失效或不匹配；429/88 → 触发频控；网络错误/超时 → 连接 X 失败（请检查代理设置）；未配置凭据直接返回「请先填写并保存 auth_token 和 ct0」且不发网络请求。端点响应白名单化（仅 ok/handle/name/reason），绝不回显凭据，日志同样不含凭据。
+- 新增 `tests/x-cred-test.test.js`（stub fetch：成功、401、403、code 32/353、429、网络错误/超时、未配置不发请求、异常状态、端点鉴权与脱敏）；静态资源统一 V=25（`scripts/bust-assets.js` 与 ui23 / accounts-ui 版本断言同步）。真实 X 验证需在设置页填入有效 auth_token/ct0 后人工点击验收。
+
 ## 2026-10-21 · X 受限推文抓取修复
 
 自动抓图支持受限/受保护推文：配置 auth_token/ct0 后，抓取优先走 X 登录态 GraphQL 接口（TweetResultByRestId，带公开 Bearer + X-Csrf-Token 三头认证），受限可见推文（TweetWithVisibilityResults）从嵌套层取图；未配置凭据或 GraphQL 失败时回落 syndication 公开接口。纯文字/删推/凭据失效/频控有独立错误文案。参考 unkmonster/tmd 的认证配方。

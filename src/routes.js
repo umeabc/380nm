@@ -15,7 +15,7 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024, files: 9 }
 });
 
-const { importFromUrl, parseWork, parseSource, downloadImage, ImportError } = require('./importers');
+const { importFromUrl, parseWork, parseSource, downloadImage, testXCredentials, ImportError } = require('./importers');
 const { buildZip } = require('./zip');
 const { cookieErrorText } = require('./cookie-monitor');
 const { mergeLibraryMentions } = require('./mentions');
@@ -63,6 +63,8 @@ function validateTemplate(body) {
 module.exports = function createRoutes(ctx) {
   const { store, storage, bili, scheduler, qrLogin, cookieRefresh } = ctx;
   const credentialsLock = ctx.credentialsLock || new AccountCredentialsLock();
+  // X 凭据测试默认走 importers 真实实现；允许 ctx 注入（仅测试用），与其它服务同一种依赖注入风格
+  const xTest = ctx.testXCredentials || testXCredentials;
   const router = express.Router();
 
   router.use(attachUser(store));
@@ -576,6 +578,31 @@ module.exports = function createRoutes(ctx) {
       await store.updateSettings(patch);
       await store.addLog('info', `管理员 ${req.user.username} 更新了全站导入设置`, { userId: req.user.id });
       res.json({ settings: settingsView() });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // X 账号测试：用**当前已保存**的 auth_token/ct0（及代理）真实请求 X 的 verify_credentials。
+  // 响应白名单化，只出 ok/handle/name/reason，绝不回显凭据。
+  router.post('/settings/x-test', requireAdmin, async (req, res, next) => {
+    try {
+      const s = store.getSettings();
+      const r = await xTest({
+        authToken: s.twitterAuth || '',
+        ct0: s.twitterCt0 || '',
+        proxy: s.importProxy || '',
+        timeout: 15000
+      });
+      const payload = r && r.ok
+        ? { ok: true, handle: String(r.handle || ''), name: String(r.name || '') }
+        : { ok: false, reason: String((r && r.reason) || '测试失败，请稍后再试') };
+      try {
+        await store.addLog('info', payload.ok
+          ? `管理员 ${req.user.username} 测试 X 凭据：可用（${payload.handle}）`
+          : `管理员 ${req.user.username} 测试 X 凭据：不可用（${payload.reason}）`, { userId: req.user.id });
+      } catch (e) { /* 日志失败不影响测试结果 */ }
+      res.json(payload);
     } catch (e) {
       next(e);
     }

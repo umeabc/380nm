@@ -15,17 +15,17 @@ const pages = fs.readdirSync(path.join(root, 'public'))
 /* 开发辅助入口不做视觉改版，也不引用共享静态资源 */
 const formalPages = pages.filter((f) => !f.startsWith('_'));
 
-test('静态资源统一 V=24：无 v23 残留，缩略图 ?w= 未被误改', () => {
+test('静态资源统一 V=25：无 v24 残留，缩略图 ?w= 未被误改', () => {
   for (const f of formalPages) {
     const html = read('public/' + f);
-    assert.doesNotMatch(html, /v=2[3]/, `${f} 仍有上一版版本号`);
-    assert.match(html, /\/css\/app\.css\?v=24/, `${f} 未使用 app.css?v=24`);
+    assert.doesNotMatch(html, /v=2[4]/, `${f} 仍有上一版版本号`);
+    assert.match(html, /\/css\/app\.css\?v=25/, `${f} 未使用 app.css?v=25`);
     const scripts = html.match(/<script[^>]+src="[^"]+"/g) || [];
     assert.ok(scripts.length > 0, `${f} 缺少脚本引用`);
-    for (const s of scripts) assert.match(s, /\?v=24"/, `${f} 脚本版本不是 24：${s}`);
+    for (const s of scripts) assert.match(s, /\?v=25"/, `${f} 脚本版本不是 25：${s}`);
   }
   // batch 另有 schedule.js，同样不得混版
-  assert.match(read('public/batch.html'), /src="\/js\/schedule\.js\?v=24"/);
+  assert.match(read('public/batch.html'), /src="\/js\/schedule\.js\?v=25"/);
   // 缩略图尺寸仍是 API 参数，不参与静态版本号
   const common = read('public/js/common.js');
   assert.match(common, /function imageSrc\(image, w = 240\)/);

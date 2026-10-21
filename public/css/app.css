@@ -1042,3 +1042,10 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
   .release-board>.release-fetchimg,
   .release-board>.release-submit{grid-column:1/-1}
 }
+
+/* 21. 全站设置 · X 账号测试结果（只追加，2026-10-21） */
+.x-test-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.x-test-hint{margin-top:10px;font-size:12.5px;line-height:1.55;white-space:normal;word-break:break-word;min-height:0}
+.x-test-hint:empty{margin-top:0}
+.x-test-hint.ck-ok{color:var(--green)}
+.x-test-hint.ck-bad{color:var(--red)}
