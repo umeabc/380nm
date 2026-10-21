@@ -695,6 +695,7 @@ async function parseXWork(url, workId, opts, onProgress) {
 
   // 有凭据：GraphQL 主路（受限推文唯一可行路径）；失败且非确定性错误时落 syndication 兜底
   let gqlBlocked = false;
+  let tombstoneSeen = false; // 是否观察到墓碑（删推/不可见），用于给出准确文案
   if (authToken && ct0) {
     try {
       const gql = await fetchTweetViaGraphQL(workId, { authToken, ct0, proxy, timeout });
@@ -708,6 +709,7 @@ async function parseXWork(url, workId, opts, onProgress) {
         throw new ImportError('该推文中未找到图片（纯文字推文）', 'restricted');
       } else {
         xDiag(workId, 'gql=tombstone-or-null');
+        tombstoneSeen = true;
         gqlBlocked = true; // tombstone：落 syndication 兜底（未登录可见的极少数情况）
       }
     } catch (e) {
@@ -733,6 +735,7 @@ async function parseXWork(url, workId, opts, onProgress) {
       data = await r.json();
       const tn = data && data.__typename;
       const cnt = ((data && data.mediaDetails) || []).length;
+      if (tn === 'TweetTombstone') tombstoneSeen = true;
       xDiag(workId, `synd=ok type=${tn || 'normal'} media=${cnt}`);
     } else {
       xDiag(workId, `synd=http${r.status}`);
@@ -757,7 +760,14 @@ async function parseXWork(url, workId, opts, onProgress) {
   }
   onProgress(1, '作品页已打开');
   if (!mediaUrls.length) {
-    xDiag(workId, 'fail=no-media(after-both-paths)');
+    xDiag(workId, `fail=no-media(after-both-paths) tombstone=${tombstoneSeen} creds=${Boolean(authToken && ct0)}`);
+    if (tombstoneSeen && authToken && ct0) {
+      // 凭据有效却两路都拿到墓碑：推文已删除或对该账号不可见——不该让人误以为是配置问题
+      throw new ImportError('该推文已删除或对你不可见（X 返回墓碑，与凭据/代理无关）', 'deleted');
+    }
+    if (tombstoneSeen) {
+      throw new ImportError('该推文需登录后才能查看（请在全站设置配置 auth_token/ct0）', 'restricted');
+    }
     throw new ImportError('该推文中未找到图片（纯文字推文，或受限内容需在全站设置配置 auth_token/ct0）', 'restricted');
   }
 

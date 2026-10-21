@@ -106,7 +106,7 @@ test('TweetTombstone + syndication 也无图：报受限文案（不误报成功
       parseWork('https://x.com/kururu/status/2107425650722082924', {
         twitterAuth: FAKE_AUTH, twitterCt0: FAKE_CT0, importProxy: '', timeout: 5000, onProgress: () => {}
       }),
-      e => e instanceof ImportError && /未找到图片|受限/.test(e.message)
+      e => e instanceof ImportError && (e.code === 'deleted' || e.code === 'restricted') && /已删除|未找到图片|受限/.test(e.message)
     );
   } finally { undici.fetch = origUfetch; global.fetch = origFetch; }
 });
