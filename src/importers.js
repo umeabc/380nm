@@ -542,6 +542,8 @@ async function parsePixivWork(url, workId, opts, onProgress) {
  * 注意：queryId/features 是社区逆向值，X 前端更新可能失效，届时更新常量即可。
  */
 const X_GRAPHQL_HOST = 'https://x.com';
+/** X 抓取诊断日志：只记录推文 ID 与路径结果，绝不包含凭据/URL 查询串 */
+function xDiag(id, msg) { try { console.log(`[x-parse] id=${id} ${msg}`); } catch (e) { /* 日志失败不影响主流程 */ } }
 const X_GRAPHQL_BEARER = 'AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA';
 const TWEET_RESULT_QUERY_ID = '0hWvDhmW8YQ-S_ib3azIrw';
 const TWEET_RESULT_FEATURES = JSON.stringify({
@@ -689,6 +691,7 @@ async function parseXWork(url, workId, opts, onProgress) {
   const { authToken, ct0, proxy, timeout } = opts;
   const f = makeFetch(proxy);
   let data = null;
+  xDiag(workId, `start creds=${Boolean(authToken && ct0)} proxy=${proxy ? 'yes' : 'no'}`);
 
   // 有凭据：GraphQL 主路（受限推文唯一可行路径）；失败且非确定性错误时落 syndication 兜底
   let gqlBlocked = false;
@@ -696,18 +699,27 @@ async function parseXWork(url, workId, opts, onProgress) {
     try {
       const gql = await fetchTweetViaGraphQL(workId, { authToken, ct0, proxy, timeout });
       if (gql && gql.mediaUrls.length) {
+        xDiag(workId, `gql=ok photos=${gql.mediaUrls.length}`);
         data = { text: gql.text, created_at: gql.createdAt, user: { screen_name: gql.handle, name: gql.author }, mediaDetails: gql.mediaUrls.map(u => ({ media_url_https: u })) };
       } else if (gql && !gql.mediaUrls.length) {
+        xDiag(workId, 'gql=visible-no-photo');
         // GraphQL 确认可见但纯文字 → 直接报错，不必再试 syndication
         onProgress(1, '作品页已打开');
         throw new ImportError('该推文中未找到图片（纯文字推文）', 'restricted');
       } else {
+        xDiag(workId, 'gql=tombstone-or-null');
         gqlBlocked = true; // tombstone：落 syndication 兜底（未登录可见的极少数情况）
       }
     } catch (e) {
-      if (e instanceof ImportError && (e.code === 'restricted' || e.message.includes('频控'))) throw e; // 凭据/频控类确定性错误直接抛
+      if (e instanceof ImportError && (e.code === 'restricted' || e.message.includes('频控'))) {
+        xDiag(workId, `gql=error code=${e.code} kind=hard`);
+        throw e; // 凭据/频控类确定性错误直接抛
+      }
+      xDiag(workId, `gql=error code=${(e && e.code) || '?'} msg=${String((e && e.message) || e).slice(0, 60)}`);
       gqlBlocked = true;
     }
+  } else {
+    xDiag(workId, 'gql=skipped(no-creds)');
   }
 
   if (!data) {
@@ -716,10 +728,18 @@ async function parseXWork(url, workId, opts, onProgress) {
       headers: { 'user-agent': UA, referer: 'https://x.com/', accept: 'application/json' },
       signal: AbortSignal.timeout(timeout)
     });
-    if (r.status === 404) throw new ImportError('链接失效或不存在的推文（可能已删除，或推文 ID 有误）', 'notfound');
-    if (r.ok) data = await r.json();
+    if (r.status === 404) { xDiag(workId, 'synd=http404'); throw new ImportError('链接失效或不存在的推文（可能已删除，或推文 ID 有误）', 'notfound'); }
+    if (r.ok) {
+      data = await r.json();
+      const tn = data && data.__typename;
+      const cnt = ((data && data.mediaDetails) || []).length;
+      xDiag(workId, `synd=ok type=${tn || 'normal'} media=${cnt}`);
+    } else {
+      xDiag(workId, `synd=http${r.status}`);
+    }
   } catch (e) {
     if (e instanceof ImportError) throw e;
+    xDiag(workId, `synd=error msg=${String((e.cause && e.cause.message) || e.message || e).slice(0, 60)}`);
     throw new ImportError('连接 X 失败（网络错误：' + ((e.cause && e.cause.message) || e.message) + '）', 'timeout');
   }
   }
@@ -737,6 +757,7 @@ async function parseXWork(url, workId, opts, onProgress) {
   }
   onProgress(1, '作品页已打开');
   if (!mediaUrls.length) {
+    xDiag(workId, 'fail=no-media(after-both-paths)');
     throw new ImportError('该推文中未找到图片（纯文字推文，或受限内容需在全站设置配置 auth_token/ct0）', 'restricted');
   }
 

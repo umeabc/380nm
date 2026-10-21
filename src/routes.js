@@ -664,7 +664,7 @@ module.exports = function createRoutes(ctx) {
       res.end();
     } catch (e) {
       const code = (e && e.code && PARSE_ERRORS[e.code]) ? e.code : 'network';
-      console.error(`[parse-work] ${code}: ${(e && e.message || e).toString().slice(0, 200)}`); // 排障日志：仅 code+message，无凭据
+      console.error(`[parse-work] ${code} url=${String(url).slice(0, 120)} err=${(e && e.message || e).toString().slice(0, 200)}`); // 排障日志：url 截断，无凭据
       send({ type: 'error', step: Math.min(done, 3), error: code, message: PARSE_ERRORS[code].t });
       res.end();
     }
