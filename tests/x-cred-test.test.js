@@ -1,4 +1,4 @@
-/* X 账号测试（verify_credentials）：stub fetch 断言请求构造与四类结果。
+/* X 账号测试（UserByScreenName GraphQL；v1.1 verify_credentials 已退役）：stub fetch 断言请求构造与四类结果。
  * 不真实联网；凭据一律假值，且断言结果对象绝不回显凭据。 */
 'use strict';
 const test = require('node:test');
@@ -25,6 +25,10 @@ async function withFakeFetch(fakeFetch, fn) {
 }
 
 const jsonResponse = (status, obj) => ({ ok: status >= 200 && status < 300, status, json: async () => obj });
+
+function gqlUser(screen_name, name) {
+  return { data: { user: { result: { legacy: { screen_name, name } } } } };
+}
 const CREDS = { authToken: FAKE_AUTH, ct0: FAKE_CT0, proxy: '', timeout: 15000 };
 const INVALID_REASON = '凭据失效或不匹配（auth_token/ct0 已过期，或触发风控，请重新获取）';
 
@@ -32,15 +36,15 @@ test('成功：200 + screen_name → {ok:true,handle,name}，Bearer/csrf/cookie 
   const seen = [];
   const fakeFetch = async (url, opts = {}) => {
     seen.push({ url: String(url), headers: opts.headers || {}, signal: opts.signal });
-    return jsonResponse(200, { screen_name: 'kururu', name: '966' });
+    return jsonResponse(200, gqlUser('kururu', '966'));
   };
   const r = await withFakeFetch(fakeFetch, () => testXCredentials(CREDS));
 
   assert.deepEqual(r, { ok: true, handle: '@kururu', name: '966' });
   assert.equal(seen.length, 1, '只应发一次请求');
   const req = seen[0];
-  assert.match(req.url, /^https:\/\/x\.com\/i\/api\/1\.1\/account\/verify_credentials\.json/);
-  assert.ok(req.url.includes('skip_status=true'), 'URL 需带 skip_status=true');
+  assert.match(req.url, /^https:\/\/x\.com\/i\/api\/graphql\/[A-Za-z0-9_-]+\/UserByScreenName/);
+  assert.ok(req.url.includes('fieldToggles='), 'URL 需带 fieldToggles 参数');
   assert.ok(req.headers.authorization.startsWith(BEARER_PREFIX), '必须使用固定公开 Bearer');
   assert.equal(req.headers['x-csrf-token'], FAKE_CT0);
   assert.equal(req.headers.cookie, `auth_token=${FAKE_AUTH}; ct0=${FAKE_CT0}`);
@@ -86,7 +90,7 @@ test('网络错误/超时：连接失败（检查代理）文案', async () => {
 
 test('未配置凭据：不发任何网络请求，直接要求先保存', async () => {
   let calls = 0;
-  const fakeFetch = async () => { calls++; return jsonResponse(200, { screen_name: 'x', name: 'x' }); };
+  const fakeFetch = async () => { calls++; return jsonResponse(200, gqlUser('x', 'x')); };
   const r = await withFakeFetch(fakeFetch, async () => {
     const a = await testXCredentials({ authToken: '', ct0: FAKE_CT0, proxy: '', timeout: 15000 });
     const b = await testXCredentials({ authToken: FAKE_AUTH, ct0: '', proxy: '', timeout: 15000 });
@@ -103,7 +107,7 @@ test('其他 HTTP 状态：异常状态文案；代理配置走 undici.fetch', a
   assert.match(r.reason, /HTTP 500/);
 
   const seen = [];
-  const r2 = await withFakeFetch(async (url) => { seen.push(String(url)); return jsonResponse(200, { screen_name: 'kururu', name: '966' }); },
+  const r2 = await withFakeFetch(async (url) => { seen.push(String(url)); return jsonResponse(200, gqlUser('kururu', '966')); },
     () => testXCredentials({ ...CREDS, proxy: 'http://127.0.0.1:9' }));
   assert.equal(r2.ok, true);
   assert.equal(seen.length, 1, '配置代理时也应发出（走 undici ProxyAgent 分支）');

@@ -631,10 +631,25 @@ async function fetchTweetViaGraphQL(workId, { authToken, ct0, proxy, timeout }) 
 }
 
 /* ---------------- X 账号测试 ----------------
- * 用已保存的 auth_token/ct0 真实请求 verify_credentials（与 GraphQL 同一套三头），
+ * 用已保存的 auth_token/ct0 真实请求 UserByScreenName GraphQL（与抓取同一套三头；v1.1 verify_credentials 已退役 404），
  * 只判断凭据是否可用，不读推文、不下载任何媒体。返回结构化结果，调用方不得回显凭据。
  */
 const X_TEST_TIMEOUT = 15000;
+const X_TEST_QUERY_ID = 'xmU6X_CKVnQ5lSrCbAmJsg'; // UserByScreenName（tmd 同款活端点；v1.1 verify_credentials 已被 X 退役实测 404）
+function xTestUrl() {
+  const vars = JSON.stringify({ screen_name: 'X', withSafetyModeUserFields: true });
+  const features = JSON.stringify({
+    hidden_profile_subscriptions_enabled: true, hidden_profile_likes_enabled: true,
+    rweb_tipjar_consumption_enabled: true, responsive_web_graphql_exclude_directive_enabled: true,
+    verified_phone_label_enabled: false, highlights_tweets_tab_ui_enabled: true,
+    responsive_web_twitter_article_notes_tab_enabled: true, subscriptions_feature_can_gift_premium: false,
+    creator_subscriptions_tweet_preview_api_enabled: true,
+    responsive_web_graphql_skip_user_profile_image_extensions_enabled: false,
+    responsive_web_graphql_timeline_navigation_enabled: true
+  });
+  const fieldToggles = JSON.stringify({ withAuxiliaryUserLabels: false });
+  return `${X_GRAPHQL_HOST}/i/api/graphql/${X_TEST_QUERY_ID}/UserByScreenName?variables=${encodeURIComponent(vars)}&features=${encodeURIComponent(features)}&fieldToggles=${encodeURIComponent(fieldToggles)}`;
+}
 
 async function testXCredentials({ authToken = '', ct0 = '', proxy = '', timeout = X_TEST_TIMEOUT } = {}) {
   const at = String(authToken || '').trim();
@@ -645,7 +660,7 @@ async function testXCredentials({ authToken = '', ct0 = '', proxy = '', timeout 
   const ms = Math.max(1000, Math.min(30000, Number(timeout) || X_TEST_TIMEOUT));
   let r;
   try {
-    r = await f(`${X_GRAPHQL_HOST}/i/api/1.1/account/verify_credentials.json?skip_status=true&include_entities=false`, {
+    r = await f(xTestUrl(), {
       headers: xAuthHeaders(at, csrf), signal: AbortSignal.timeout(ms)
     });
   } catch (e) {
@@ -665,9 +680,9 @@ async function testXCredentials({ authToken = '', ct0 = '', proxy = '', timeout 
     return { ok: false, reason: '凭据失效或不匹配（auth_token/ct0 已过期，或触发风控，请重新获取）' };
   }
   if (err && err.code === 88) return { ok: false, reason: '触发 X 频控，请稍后再试' };
-  const sn = j && j.screen_name;
-  if (!sn) return { ok: false, reason: 'X 未返回账号信息（凭据可能已失效，请重新获取）' };
-  return { ok: true, handle: '@' + sn, name: j.name || sn };
+  const legacy = j && j.data && j.data.user && j.data.user.result && j.data.user.result.legacy;
+  if (!legacy || !legacy.screen_name) return { ok: false, reason: 'X 未返回账号信息（凭据可能已失效，请重新获取）' };
+  return { ok: true, handle: '@' + legacy.screen_name, name: legacy.name || legacy.screen_name };
 }
 
 async function parseXWork(url, workId, opts, onProgress) {
