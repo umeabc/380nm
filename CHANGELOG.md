@@ -2,6 +2,12 @@
 
 按时间倒序记录 380nm 的功能与修复。日期为提交日期。
 
+## 2026-10-22 · 缩略图解码加固（sharp CVE 缓解）
+
+尝试将 `sharp` 从 0.34.5 升级到 0.35.5（修复 libvips/libheif/librsvg 继承的高危 CVE，`npm audit` 归零），但 **测试机 CPU（Common KVM processor）缺少 x86-64-v2 微架构**，0.35.x 官方 Linux 预编译包无法加载（`Unsupported CPU`），故回退 0.34.5 保持双机一致。
+
+替代缓解：缩略图管线在**进入 sharp 解码器之前**增加魔数白名单（仅放行 jpeg/png/gif/bmp/webp），heif/avif/svg/tiff 及未知容器一律按不支持处理并回退原图，避免把高危解码器暴露给非预期格式；同时保留 `failOn:'error'`、像素/字节上限。正式机 CPU（Xeon E5-2683 v4）支持 v2，若未来只升级正式机需另行分叉镜像。
+
 ## 2026-10-22 · 运行时安全升级（Node 20 → 24）
 
 基础镜像由 `node:20-alpine` 升级为 `node:24-alpine`（v24.22.1）。原因：Node 20 已 EOL 且不提供 2026-10 安全公告的修复，其中 **CVE-2026-111497**（Brotli 解码器越界写，可致远程代码执行，HIGH）影响所有在用运行时；24.22.1 已包含该批全部修复（含 undici/OpenSSL/c-ares 依赖更新）。本地与两端容器实测：sharp 转码、缩略图端点、X 受限推文抓取、账号与图库数据均正常。
