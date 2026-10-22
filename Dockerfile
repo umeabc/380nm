@@ -1,6 +1,8 @@
-# 基础镜像沿用 node:20-alpine（服务器本地已缓存）：部署环境无法访问 Docker Hub，
-# 固定小版本标签会触发远端 manifest 解析失败；musl 版本以 sharp 官方预编译兼容为准。
-FROM node:20-alpine
+# 基础镜像：Node 24 LTS（当前 v24.22.1）。
+# 2026-10-22 从 node:20-alpine 升级：Node 20 已 EOL 且不提供 CVE-2026-111497
+# （Brotli 解码器越界写 → RCE，HIGH）等 2026-10 安全公告的修复；Node 24.22.1 已含全部修复。
+# sharp 走 N-API，与 Node 版本无关；linuxmusl 预编译包已锁定在 lockfile 中。
+FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=8787 TZ=Asia/Shanghai
 COPY package*.json ./
