@@ -24,5 +24,14 @@ services:
       - THUMB_CACHE_MAX_MB=${THUMB_CACHE_MAX_MB:-512}
       - THUMB_CACHE_DAYS=${THUMB_CACHE_DAYS:-30}
       - THUMB_FETCH_TIMEOUT_MS=${THUMB_FETCH_TIMEOUT_MS:-10000}
+      # Cookie 自动续期（严格 0/1）
+      - COOKIE_AUTO_REFRESH=${COOKIE_AUTO_REFRESH:-1}
+      # 反向代理部署必须设为 1，否则登录限速的 IP 维度会退化成全局阈值
+      - TRUST_PROXY=${TRUST_PROXY:-0}
+      # 登录失败限速（默认 5 次用户名 / 20 次 IP / 15 分钟）
+      - LOGIN_MAX_FAILURES=${LOGIN_MAX_FAILURES:-5}
+      - LOGIN_MAX_FAILURES_IP=${LOGIN_MAX_FAILURES_IP:-20}
+      - LOGIN_WINDOW_MS=${LOGIN_WINDOW_MS:-900000}
+      - LOGIN_THROTTLE_MAX_ENTRIES=${LOGIN_THROTTLE_MAX_ENTRIES:-5000}
     volumes:
       - ./data:/app/data

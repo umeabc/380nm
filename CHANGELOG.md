@@ -2,6 +2,53 @@
 
 按时间倒序记录 380nm 的功能与修复。日期为提交日期。
 
+## 2026-10-26 · 安全加固：原图鉴权 + 登录限速 + 文档对齐
+
+**原图 `/uploads` 不再是公开静态目录**（`src/uploads.js` + `src/image-access.js` + `src/storage/local.js`）
+
+- 新增中间件 `createUploadsMiddleware`，由 `server.js` 在 local 驱动下挂载到 `/uploads`；R2 驱动不经过它。
+- 鉴权：必须登录（会话 Cookie `sid`），未登录 **401**。key 必须属于当前用户，或当前用户是管理员：先查图库记录 `images[]`，再查可见任务的 `jobs[].images[]` 快照。判据抽为 `src/image-access.js` 的 `findReadableImage()`，`/api/thumb` 改为调用同一函数，两处不再各写一份（此前 thumb 自带内联实现）。
+- 无权 / 不存在 / 路径非法（含编码绕过、`..`、目录、符号链接逃逸）**统一 404**，不泄露「存在但无权」。
+- 缓存头由公开 `max-age=7d` 改为 `Cache-Control: private, max-age=0, must-revalidate` + `Vary: Cookie`，并加 `X-Content-Type-Options: nosniff`。
+- 保留 `HEAD` / `Range` / `ETag` / `Last-Modified` / `304`（依赖 `res.sendFile` 的 `cacheControl: true, acceptRanges: true`）。
+- `LocalStorage.fileForRead(key)`：先 `validateKey`，再 `realpath` 做包含性检查，拒绝符号链接逃出上传根；非普通文件按不存在处理。
+- `THUMB_ENABLED=0` 的降级路径仍 302 到 `/uploads/<key>`，因此同样受鉴权保护；有测试覆盖「带 Cookie 可打开」。
+
+**登录失败限速**（`src/login-throttle.js`，`src/config.js`，`src/routes.js`）
+
+- `POST /api/auth/login` 先查限速再校验密码：被拦截的请求不消耗 scrypt，也不累加失败计数（否则持续爆破会让窗口永不过期）。
+- 双维度计数：用户名（默认 5 次）挡换 IP 爆破单账号；IP（默认 20 次）挡同源换用户名广撒网，阈值更宽松以免 NAT 连坐。任一维度达阈值即 **429 + `Retry-After`**（取两维度中较晚恢复者，正整数秒）。
+- 成功登录**只清用户名维度**，不清 IP 维度——否则持有一个合法账号就能反复重置 IP 计数去爆破别人；IP 计数靠窗口自然过期。
+- 两个 Map 都有条数上限（`LOGIN_THROTTLE_MAX_ENTRIES`，默认 5000）并做过期清理：超出先清过期项，仍超则丢最早写入的。用户名 key 大小写不敏感并截断到 100 字符。
+- 新增环境变量（`src/config.js` 严格校验，非法值启动即失败）：`LOGIN_MAX_FAILURES`(5，1–1000)、`LOGIN_MAX_FAILURES_IP`(20，1–100000)、`LOGIN_WINDOW_MS`(900000，1000–86400000)、`LOGIN_THROTTLE_MAX_ENTRIES`(5000，1–100000)、`TRUST_PROXY`(0，只接受 0/1)。
+- `TRUST_PROXY=1` 时 `app.set('trust proxy', 1)`；**默认关闭**，避免客户端伪造 `X-Forwarded-For` 绕过限速。反代部署不开它会让所有请求共享反代 IP、IP 维度退化为全局阈值。
+
+**Docker 配置注入缺口**（`docker-compose.yml`）
+
+- 修复：`docker-compose.yml` 的 `environment` 此前只注入 `STORAGE_DRIVER` / `R2_*` / `THUMB_*`。本次补齐 `COOKIE_AUTO_REFRESH`、`TRUST_PROXY`、`LOGIN_MAX_FAILURES`、`LOGIN_MAX_FAILURES_IP`、`LOGIN_WINDOW_MS`、`LOGIN_THROTTLE_MAX_ENTRIES` 六项（各自带默认值）。
+- 影响：此前在 `.env` 里设 `COOKIE_AUTO_REFRESH=0` 对容器内的应用是静默无效的；新增的 `TRUST_PROXY` / `LOGIN_*` 若不同步注入同样会静默失效——尤其 `TRUST_PROXY` 失效会让反代部署下的登录限速退化为全局阈值却无任何报错。
+- `R2_QUOTA_GB` 仍未写入 `environment`，Docker 部署下不生效（已在 `.env.example` 标注）。
+
+**新增测试**（`node --test tests/*.test.js`，本机 Node v24.22.1 实测：**115 个用例全部通过，0 失败**）
+
+- `tests/uploads-auth.test.js`（4 个用例）：401/404/200 三角色判定与私缓存头；HEAD、Range、ETag/304、子目录 key；路径穿越与符号链接逃逸；thumb 降级 302 带 Cookie 可打开。
+- `tests/login-throttle.test.js`（7 个用例）：429 + `Retry-After` 且不泄露用户名是否存在；成功登录只清用户名维度；窗口过期与被限速不累加；IP 维度挡广撒网且不误伤同 IP 正常用户；Map 有界；`TRUST_PROXY` 默认关闭与显式开启；非法 `LOGIN_*` / `TRUST_PROXY` 启动失败。
+- 另在 `tests/accounts-auth.test.js`、`tests/jobs-batch.test.js`、`tests/thumb-routes.test.js`、`tests/x-cred-test.test.js` 的 harness 里注入放行桩 `loginThrottle`，避免这些用例共享生产默认限速状态互相干扰（只改测试装配，不改断言意图）。
+
+> 复跑说明：全量套件在当前工作树连续 12 次均为 115 全过；此前另有 2 次各出现 1 个偶发失败（`accounts-auth` 的「下线账号不允许跨用户删除/修改」与 `x-cred-test` 的「未登录 401 / 非管理员 403」各一次），未能稳定复现，判断与测试文件当时正被并行修改有关，未改代码迁就。
+
+**文档对齐**
+
+- `README.md`：Node 基线改为 Node 24 / `node:24-alpine`（`package.json` 的 `engines` 未改动）；删除已下线的任务「标签体系」描述（Danbooru 页的站内搜索标签保留）；内容类型改按 `src/templates.js` 的 `TASK_TYPES` 与界面标签书写；账号库去掉「角色」分类；R2 从「预留」改为已实现；目录结构补齐 `public/danbooru.html`、`public/js/pages/*.js`、`public/_devlogin.html`、`src/image-access.js`、`src/uploads.js`、`src/login-throttle.js` 与全部 15 个测试文件；环境变量表补 `TRUST_PROXY` / `LOGIN_*`；新增「安全与访问控制」一节。
+- `.env.example`：补 `TRUST_PROXY`、`COOKIE_AUTO_REFRESH`、`LOGIN_*`、`THUMB_*` 及默认值（与 `docker-compose.yml` 一致），并注明应用本身不加载 `.env`（无 dotenv）、`R2_QUOTA_GB` 未注入容器。
+
+**未验证项（不宣称通过）**
+
+- 真实反向代理（nginx / Caddy）下的 `X-Forwarded-For` 链路与 `TRUST_PROXY=1` 的端到端行为：测试只覆盖 Express 层 `trust proxy` 语义与默认关闭，未在真实反代后验收。
+- 多实例 / 多副本部署下的共享限速：计数在进程内，各实例独立计算，实际阈值被放大 N 倍，未做分布式验证。
+- `docker-compose.yml` 的改动只做了静态语法与变量引用检查（键无重复、与 `src/config.js` 读的环境变量名一致）；**本机无 Docker，未实际执行 `docker compose config` 或起容器验证注入结果**。
+- 真实部署验收：本机无 Docker，`node:24-alpine` 镜像内建、musl 下 sharp 转码、以及正式图库在鉴权后的放大 / 发布 / ZIP 流程均留人工验收。
+
 ## 2026-10-22 · 缩略图解码加固（sharp CVE 缓解）
 
 尝试将 `sharp` 从 0.34.5 升级到 0.35.5（修复 libvips/libheif/librsvg 继承的高危 CVE，`npm audit` 归零），但 **测试机 CPU（Common KVM processor）缺少 x86-64-v2 微架构**，0.35.x 官方 Linux 预编译包无法加载（`Unsupported CPU`），故回退 0.34.5 保持双机一致。

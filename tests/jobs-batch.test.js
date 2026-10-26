@@ -93,7 +93,9 @@ describe('POST /api/jobs/batch', () => {
     app = express();
     app.use(express.json());
     
-    app.use('/api', createRoutes({ store, storage: {}, bili, scheduler: {}, cookieMonitor: {} }));
+    // 本文件不测登录限速：显式注入放行桩，避免共享生产默认限速状态（阈值/窗口会串用例）。
+    const loginThrottle = { check: () => ({ allowed: true, retryAfterSec: 0 }), fail() {}, succeed() {} };
+    app.use('/api', createRoutes({ store, storage: {}, bili, scheduler: {}, cookieMonitor: {}, loginThrottle }));
     
     server = app.listen(0);
     await new Promise(resolve => server.once('listening', resolve));

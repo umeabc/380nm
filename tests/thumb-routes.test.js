@@ -21,7 +21,8 @@ test('R2受控降级URL、无公网502、源删除404和过载503', async () => 
     }, readForThumbnail: async () => { throw new Error('network failure'); } };
     const previous = process.env.THUMB_ENABLED;
     if (scenario === 'disabled') process.env.THUMB_ENABLED = '0';
-    const app = express(); app.use('/api', createRoutes({ store, storage }));
+    const loginThrottle = { check: () => ({ allowed: true, retryAfterSec: 0 }), fail() {}, succeed() {} };
+    const app = express(); app.use('/api', createRoutes({ store, storage, loginThrottle }));
     if (previous === undefined) delete process.env.THUMB_ENABLED; else process.env.THUMB_ENABLED = previous;
     const server = app.listen(0, '127.0.0.1'); await new Promise(r => server.once('listening', r));
     try {
@@ -44,7 +45,8 @@ test('HTTP授权、WebP、304、历史快照、源删除与非法参数', async 
   const store = { getSession: token => users[token] && { user: users[token] }, listImages: () => images, listJobs: () => [{ userId: 'u', images: [image] }], save() { throw new Error('禁止写DB'); }, addLog() { throw new Error('禁止日志'); } };
   // 配置模块不改生产配置，隔离派生根。
   const { config } = require('../src/config'); const previous = config.dataDir; config.dataDir = dir;
-  const app = express(); app.use('/api', createRoutes({ store, storage }));
+  const loginThrottle = { check: () => ({ allowed: true, retryAfterSec: 0 }), fail() {}, succeed() {} };
+  const app = express(); app.use('/api', createRoutes({ store, storage, loginThrottle }));
   const server = app.listen(0, '127.0.0.1'); await new Promise(r => server.once('listening', r));
   const base = `http://127.0.0.1:${server.address().port}/api/thumb/${image.key}`;
   const request = (suffix = '', user = 'u', headers = {}) => fetch(base + suffix, { headers: { ...(user && { cookie: `sid=${user}` }), ...headers }, redirect: 'manual' });

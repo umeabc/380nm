@@ -132,8 +132,11 @@ async function endpointHarness({ role = 'admin', result, settings = { twitterAut
     addLog: async (level, msg) => { logs.push({ level, msg }); }
   };
   const app = express();
+  // 本文件不测登录限速：显式注入放行桩，避免共享生产默认限速状态（阈值/窗口会串用例）。
+  const loginThrottle = { check: () => ({ allowed: true, retryAfterSec: 0 }), fail() {}, succeed() {} };
   app.use('/api', createRoutes({
     store, storage: {},
+    loginThrottle,
     testXCredentials: async (args) => { calls.push(args); return typeof result === 'function' ? result(args) : result; }
   }));
   const server = app.listen(0, '127.0.0.1');

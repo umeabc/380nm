@@ -144,7 +144,7 @@
           </div>
         </div>
         <div class="field" id="e-slot-field" style="margin-bottom:12px">
-          <label>账号槽位绑定 <span style="color:var(--text-3)">· 每个 @ 绑定一个角色，从账号库按角色过滤</span></label>
+          <label>账号槽位绑定 <span style="color:var(--text-3)">· 每个 @ 绑定一个成员，从账号库的在岗成员中选择</span></label>
           <div class="slots" id="e-slots"></div>
         </div>
         <div class="foot-hint" id="e-seg-hint" style="margin-bottom:12px"></div>

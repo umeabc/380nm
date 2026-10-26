@@ -22,6 +22,9 @@ const { mergeLibraryMentions } = require('./mentions');
 
 const { thumbnailConfig, validateKey } = require('./thumb-config');
 const { createThumbnailService } = require('./thumbs');
+const { findReadableImage } = require('./image-access');
+const { LoginThrottle } = require('./login-throttle');
+const { config } = require('./config');
 const { AccountCredentialsLock } = require('./account-credentials-lock');
 const { validateBiliCredentials, PassportError, maskSecret, maskAccount } = require('./bilibili-passport');
 const { mergedNavStatus, passportFailureMessage } = require('./cookie-refresh');
@@ -65,6 +68,8 @@ module.exports = function createRoutes(ctx) {
   const credentialsLock = ctx.credentialsLock || new AccountCredentialsLock();
   // X 凭据测试默认走 importers 真实实现；允许 ctx 注入（仅测试用），与其它服务同一种依赖注入风格
   const xTest = ctx.testXCredentials || testXCredentials;
+  // 登录失败限速：允许注入（测试注入时钟），默认按启动时的配置创建
+  const loginThrottle = ctx.loginThrottle || new LoginThrottle(config.login);
   const router = express.Router();
 
   router.use(attachUser(store));
@@ -91,13 +96,8 @@ module.exports = function createRoutes(ctx) {
       if (Object.keys(req.query).some(k => k !== 'w') || (req.query.w !== undefined && !['240', '480'].includes(req.query.w))) {
         return res.status(400).json({ error: '非法缩略参数' });
       }
-      const readable = r => r.userId === req.user.id || req.user.role === 'admin';
-      record = store.listImages().find(i => i.key === key && readable(i));
-      if (!record) {
-        for (const job of store.listJobs().filter(readable)) {
-          record = (job.images || []).find(i => i.key === key); if (record) break;
-        }
-      }
+      // 与 /uploads 原图共用同一套归属判据（图库记录 + 可见任务快照）。
+      record = findReadableImage(store, key, req.user);
       if (!record) return res.status(404).json({ error: '图片不存在' });
       const sourceMeta = await thumbs.metadata(key, controller.signal);
       if (!thumbConfig.enabled) {
@@ -137,11 +137,21 @@ module.exports = function createRoutes(ctx) {
     try {
       const { username, password } = req.body || {};
       if (!username || !password) return res.status(400).json({ error: '请输入用户名和密码' });
+      // 先看限速再看密码：被拦截的请求不消耗 scrypt，也不计入失败次数，
+      // 否则持续爆破会让窗口永远不过期。
+      const ip = req.ip || (req.socket && req.socket.remoteAddress) || '';
+      const limit = loginThrottle.check(ip, username);
+      if (!limit.allowed) {
+        return res.set('Retry-After', String(limit.retryAfterSec))
+          .status(429).json({ error: '登录失败次数过多，请稍后再试' });
+      }
       const user = store.getUserByUsername(username);
       if (!user || !verifyPassword(password, user.passwordHash)) {
+        loginThrottle.fail(ip, username);
         return res.status(401).json({ error: '用户名或密码错误' });
       }
       if (user.active === false) return res.status(403).json({ error: '该账号已被禁用，请联系管理员' });
+      loginThrottle.succeed(ip, username);
       const token = store.createSession(user.id);
       await store.updateUser(user.id, { lastLoginAt: new Date().toISOString() });
       res.setHeader('Set-Cookie',

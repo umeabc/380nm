@@ -50,7 +50,9 @@ async function harness(t) {
   const storage = { name: 'local', dir: path.join(dir, 'uploads'), cfg: {} };
   const app = express();
   app.use(express.json({ limit: '1mb' }));
-  app.use('/api', createRoutes({ store, storage, bili, credentialsLock: lock, qrLogin: qr, cookieRefresh: refresh }));
+  // 本文件不测登录限速：显式注入放行桩，避免共享生产默认限速状态（阈值/窗口会串用例）。
+  const loginThrottle = { check: () => ({ allowed: true, retryAfterSec: 0 }), fail() {}, succeed() {} };
+  app.use('/api', createRoutes({ store, storage, bili, credentialsLock: lock, qrLogin: qr, cookieRefresh: refresh, loginThrottle }));
   const server = app.listen(0, '127.0.0.1');
   await new Promise((r) => server.once('listening', r));
   const base = `http://127.0.0.1:${server.address().port}/api`;

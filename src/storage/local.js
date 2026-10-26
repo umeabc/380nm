@@ -11,6 +11,15 @@ const EXT_BY_TYPE = {
   'image/avif': '.avif'
 };
 
+/** 扩展名 → Content-Type；未知扩展名按二进制处理（配合 nosniff 不会嗅探成页面）。 */
+const TYPE_BY_EXT = {
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp', '.avif': 'image/avif'
+};
+function contentTypeForPath(file) {
+  return TYPE_BY_EXT[path.extname(String(file || '')).toLowerCase()] || 'application/octet-stream';
+}
+
 class LocalStorage {
   constructor(dir) {
     this.dir = dir;
@@ -46,10 +55,31 @@ class LocalStorage {
   async get(key) {
     const p = this._path(key);
     const buffer = await fsp.readFile(p);
-    const ext = path.extname(p).toLowerCase();
-    const contentType =
-      Object.entries(EXT_BY_TYPE).find(([, e]) => e === ext)?.[0] || 'application/octet-stream';
-    return { buffer, contentType };
+    return { buffer, contentType: contentTypeForPath(p) };
+  }
+
+  /**
+   * 只读下载：把 key 解析为可安全 sendFile 的真实路径。
+   * 先过 validateKey（拒绝 ..、绝对路径、反斜杠等），再做 realpath 包含性检查
+   * （拒绝符号链接逃逸），与 statForThumbnail 的判据一致。支持子目录 key。
+   * 失败时抛出带 code 的错误：BAD_KEY / ENOENT（含非普通文件）。
+   */
+  async fileForRead(key) {
+    require('../thumb-config').validateKey(key);
+    const root = await fsp.realpath(this.dir);
+    let file;
+    try {
+      file = await fsp.realpath(this._path(key));
+    } catch (e) {
+      if (e.code === 'ENOENT') throw Object.assign(new Error('源不存在'), { code: 'ENOENT' });
+      throw e;
+    }
+    if (!file.startsWith(root + path.sep)) {
+      throw Object.assign(new Error('路径越界'), { code: 'BAD_KEY' });
+    }
+    const st = await fsp.stat(file);
+    if (!st.isFile()) throw Object.assign(new Error('源不存在'), { code: 'ENOENT' });
+    return { file, size: st.size, contentType: contentTypeForPath(file) };
   }
 
   async delete(key) {

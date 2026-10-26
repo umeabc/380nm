@@ -11,6 +11,8 @@ const { QrLoginService } = require('./src/qrcode-login');
 const { Scheduler } = require('./src/scheduler');
 const { CookieMonitor } = require('./src/cookie-monitor');
 const createRoutes = require('./src/routes');
+const { createUploadsMiddleware } = require('./src/uploads');
+const { LoginThrottle } = require('./src/login-throttle');
 
 async function main() {
   const store = await createStore(config.dataDir);
@@ -19,10 +21,13 @@ async function main() {
 
   const app = express();
   app.disable('x-powered-by');
+  // 只有显式 opt-in 才信任反代给出的 X-Forwarded-For；默认关闭，避免伪造 IP 绕过登录限速。
+  if (config.trustProxy) app.set('trust proxy', 1);
   app.use(express.json({ limit: '20mb' }));
 
+  // 原图必须与 /api/thumb 一样要求登录并按用户隔离；R2 驱动不走这条路由。
   if (storage.name === 'local') {
-    app.use('/uploads', express.static(storage.dir, { maxAge: '7d' }));
+    app.use('/uploads', createUploadsMiddleware({ store, storage }));
   }
 
   // 页面路由（多页应用）
@@ -59,7 +64,8 @@ async function main() {
   const cookieMonitor = new CookieMonitor({ store, bili, config: config.cookieMonitor, refresh: cookieRefresh, lock: credentialsLock });
   app.use('/api', createRoutes({
     store, storage, bili, scheduler, cookieMonitor,
-    qrLogin, cookieRefresh, credentialsLock
+    qrLogin, cookieRefresh, credentialsLock,
+    loginThrottle: new LoginThrottle(config.login)
   }));
 
   app.use((err, req, res, next) => {
