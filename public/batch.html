@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>批量编排 · 380nm</title>
-<link rel="stylesheet" href="/css/app.css?v=26">
+<link rel="stylesheet" href="/css/app.css?v=27">
 </head>
 <body>
 <div class="sidebar" id="sidebar"></div>
@@ -142,22 +142,28 @@
   </main>
 </div>
 
-<div class="mask batch-confirm-mask" id="confirm-mask" style="display:none">
-  <div class="modal batch-confirm">
+<div class="mask batch-confirm-mask" id="confirm-mask" style="display:none" aria-hidden="true">
+  <div class="modal batch-confirm confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-body confirm-warning" tabindex="-1">
     <div class="modal-head">
       <div class="modal-title" id="confirm-title">确认批量入队</div>
     </div>
     <div class="modal-body" id="confirm-body"></div>
-    <div class="modal-foot">
-      <button class="btn" id="confirm-cancel">返回检查</button>
-      <button class="btn primary" id="confirm-ok">确认入队</button>
+    <div class="near-time-warning" id="confirm-warning" role="alert" aria-atomic="true" style="display:none">
+      <span class="near-time-warning-icon" aria-hidden="true">⚠</span>
+      <span id="confirm-warning-text"></span>
+    </div>
+    <div class="modal-foot confirm-actions">
+      <button class="btn" id="confirm-cancel" type="button">返回检查</button>
+      <button class="btn primary confirm-submit" id="confirm-ok" type="button">确认入队</button>
     </div>
   </div>
 </div>
 
 <div id="toast-wrap"></div>
-<script src="/js/common.js?v=26"></script>
-<script src="/js/schedule.js?v=26"></script>
-<script src="/js/pages/batch.js?v=26"></script>
+<script src="/js/common.js?v=27"></script>
+<script src="/js/schedule.js?v=27"></script>
+<script src="/js/confirm-dialog.js?v=27"></script>
+<script src="/js/near-time.js?v=27"></script>
+<script src="/js/pages/batch.js?v=27"></script>
 </body>
 </html>

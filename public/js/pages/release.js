@@ -675,7 +675,8 @@
     renderImageGrid();
     renderSubmit();
   }
-  async function submitJob() {
+  /* 收集并校验表单，返回 payload 或触发 toast 后返回 null */
+  function collectJobPayload() {
     const errs = [];
     if (!$('#sel-account').value) errs.push({ t: '请先选择发布账号', sel: '#sel-account' });
     const title = $('#dyn-title').value.trim();
@@ -694,34 +695,112 @@
     if (errs.length) {
       errs.forEach((e) => { if (e.sel) flash(e.sel); });
       toast(errs[0].t, 'err', 3200);
-      return;
+      return null;
     }
+    const timeVal = $('#time-input').value;
+    const when = timeVal ? new Date(timeVal) : new Date();
+    if (isNaN(when.getTime())) { toast('计划时间不正确', 'err'); return null; }
+    return {
+      templateId: tpl.id,
+      accountId: $('#sel-account').value,
+      variables: collectVariables(),
+      images: state.selected,
+      topic: state.topic,
+      title,
+      mentions: collectMentions(),
+      type: '原创',
+      scheduledAt: when.toISOString()
+    };
+  }
+
+  /* POST payload，成功后 reset + toast */
+  async function postJob(payload) {
+    const r = await api('POST', '/api/jobs', payload);
+    // 不跳转：提交后原地重置表单，便于连续发布下一条
+    const tpl = currentTemplate();
+    const okText = '已加入发布队列：' + tpl.name + ' · ' + state.selected.length + ' 张配图' +
+      (state.topic ? ' · #' + state.topic.name + '#' : '');
+    resetAfterSubmit();
+    toast(okText + ' · 可继续发布下一条', 'ok', 3600);
+  }
+
+  let releaseDialog = null;
+  let posting = false;
+  let frozenPayload = null;
+
+  async function submitJob() {
+    const btn = $('#btn-submit');
+    if (btn.disabled) return;
+    btn.disabled = true;
     try {
-      const btn = $('#btn-submit');
-      btn.disabled = true;
+      const payload = collectJobPayload();
+      if (!payload) return;
+
+      const now = Date.now();
       const timeVal = $('#time-input').value;
-      const when = timeVal ? new Date(timeVal) : new Date();
-      if (isNaN(when.getTime())) { toast('计划时间不正确', 'err'); return; }
-      const r = await api('POST', '/api/jobs', {
-        templateId: tpl.id,
-        accountId: $('#sel-account').value,
-        variables: collectVariables(),
-        images: state.selected,
-        topic: state.topic,
-        title,
-        mentions: collectMentions(),
-        type: '原创',
-        scheduledAt: when.toISOString()
-      });
-      // 不跳转：提交后原地重置表单，便于连续发布下一条
-      const okText = '已加入发布队列：' + tpl.name + ' · ' + state.selected.length + ' 张配图' +
-        (state.topic ? ' · #' + state.topic.name + '#' : '');
-      resetAfterSubmit();
-      toast(okText + ' · 可继续发布下一条', 'ok', 3600);
+      const cls = NearTime.classifyTime(timeVal, now, NearTime.RELEASE_NEAR_MS);
+
+      if (cls.kind === 'invalid') {
+        toast('计划时间不正确', 'err');
+        return;
+      }
+
+      if (cls.needsConfirm) {
+        // 冻结 payload 快照
+        frozenPayload = payload;
+
+        if (!releaseDialog) {
+          releaseDialog = ConfirmDialog.create({
+            mask: '#release-confirm-mask',
+            cancel: '#release-confirm-cancel',
+            confirm: '#release-confirm-ok'
+          });
+          // 取消监听：清理快照
+          $('#release-confirm-cancel').addEventListener('click', () => {
+            frozenPayload = null;
+          });
+          $('#release-confirm-ok').addEventListener('click', async () => {
+            if (posting) return;
+            const payload = frozenPayload;
+            posting = true;
+            releaseDialog.setLoading(true);
+            try {
+              await postJob(payload);
+              releaseDialog.setLoading(false);
+              releaseDialog.close();
+              frozenPayload = null;
+            } catch (e) {
+              toast(e.message, 'err', 3200);
+              releaseDialog.setLoading(false);
+            } finally {
+              posting = false;
+            }
+          });
+        }
+
+        let bodyText = '';
+        if (cls.kind === 'empty') {
+          bodyText = '发布时间：立即发布。确认加入发布队列？';
+        } else if (cls.kind === 'past') {
+          bodyText = `发布时间：立即发布（原计划：${NearTime.formatLocalTime(cls.atMs)}，已过期）。确认加入发布队列？`;
+        } else {
+          bodyText = `发布时间：${NearTime.formatLocalTime(cls.atMs)}。确认加入发布队列？`;
+        }
+        $('#release-confirm-body').textContent = bodyText;
+        releaseDialog.open({ trigger: btn });
+      } else {
+        // 直接提交
+        posting = true;
+        try {
+          await postJob(payload);
+        } finally {
+          posting = false;
+        }
+      }
     } catch (e) {
       toast(e.message, 'err', 3200);
     } finally {
-      $('#btn-submit').disabled = false;
+      btn.disabled = false;
     }
   }
 

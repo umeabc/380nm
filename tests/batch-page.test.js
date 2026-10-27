@@ -23,16 +23,21 @@ async function page() {
   const context = vm.createContext({ console, Date, Map, Set, document,
     window: { innerWidth: 1000, innerHeight: 800 },
     App: { $, $$: () => [], icon: () => '<svg></svg>', esc: s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'),
-      boot: async () => {}, toast() {}, debounce: fn => fn } });
+      boot: async () => {}, toast() {}, debounce: fn => fn },
+    ConfirmDialog: { create: () => ({ open() {}, close() {}, setLoading() {} }) } });
+  // 加载 near-time.js
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/js/near-time.js'), 'utf8'), context);
+  context.NearTime = context.window.NearTime;
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/js/schedule.js'), 'utf8'), context);
   context.BatchSchedule = context.window.BatchSchedule;
   let source = fs.readFileSync(path.join(__dirname, '../public/js/pages/batch.js'), 'utf8');
-  source = source.replace(/\}\)\(\);\s*$/, 'window.testing = { state, replan, renderRow, editTitle, buildJobItem, timeOptions, changeTime, renderTable, bindRowEvents, openTimePopover, closeTimePopover }; })();');
+  source = source.replace(/\}\)\(\);\s*$/, 'window.testing = { state, replan, renderRow, editTitle, buildJobItem, timeOptions, changeTime, renderTable, bindRowEvents, openTimePopover, closeTimePopover, showConfirm }; })();');
   await vm.runInContext(source, context);
   const api = context.window.testing;
-  Object.assign(api.state.config, { date: '2026-10-12', start: '10:00', end: '14:00', avoid: [11], prefix: '优香', templateId: 'tpl' });
+  Object.assign(api.state.config, { date: '2026-10-12', start: '10:00', end: '14:00', avoid: [11], prefix: '优香', templateId: 'tpl', accountId: 'acc1' });
   api.state.templates = [{ id: 'tpl', variables: [{ key: 'body', type: 'textarea' }], maxImages: 9 }];
-  return { ...api, $, document };
+  api.state.accounts = [{ id: 'acc1', name: '测试账号' }];
+  return { ...api, $, document, NearTime: context.NearTime };
 }
 function row(id) {
   return { id, status: 'ready', title: '', images: [], selectedImages: [], credit: '作者', variables: {}, manualTitle: false, scheduledAt: '', collision: false };
@@ -99,4 +104,29 @@ test('操作列桌面与卡片仅两个按钮，无上移下移入口', async ()
   assert.match(html, /aria-label="修改计划时间"/);
   // 卡片布局复用同一行与操作列，编辑按钮展开已有行编辑区域。
   a.editorOpen = true; assert.match(p.renderRow(a, 0), /batch-row-editor/);
+});
+
+test('showConfirm 无临近项时红块隐藏', async () => {
+  const p = await page();
+  const a = row('a'); a.scheduledAt = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 小时后
+  p.state.rows = [a];
+  p.showConfirm();
+  assert.equal(p.$('#confirm-warning').style.display, 'none');
+  assert.match(p.$('#confirm-body').innerHTML, /将向/);
+});
+
+test('showConfirm 有1条 30 分钟内时红块显示数量与最早时间', async () => {
+  const p = await page();
+  const now = Date.now();
+  const nearTime = new Date(now + 15 * 60 * 1000).toISOString(); // 15 分钟后
+  const farTime = new Date(now + 60 * 60 * 1000).toISOString(); // 1 小时后
+  const a = row('a'); a.scheduledAt = nearTime;
+  const b = row('b'); b.scheduledAt = farTime;
+  p.state.rows = [a, b];
+  p.showConfirm();
+  assert.notEqual(p.$('#confirm-warning').style.display, 'none');
+  const warnText = p.$('#confirm-warning-text').textContent;
+  assert.match(warnText, /1 条动态将在 30 分钟内发布/);
+  assert.match(warnText, /最早计划时间/);
+  assert.match(warnText, /已过期的任务将按立即发布处理/);
 });

@@ -15,17 +15,17 @@ const pages = fs.readdirSync(path.join(root, 'public'))
 /* 开发辅助入口不做视觉改版，也不引用共享静态资源 */
 const formalPages = pages.filter((f) => !f.startsWith('_'));
 
-test('静态资源统一 V=26：无 v24 残留，缩略图 ?w= 未被误改', () => {
+test('静态资源统一 V=27：无 v24 残留，缩略图 ?w= 未被误改', () => {
   for (const f of formalPages) {
     const html = read('public/' + f);
-    assert.doesNotMatch(html, /v=2[4]/, `${f} 仍有上一版版本号`);
-    assert.match(html, /\/css\/app\.css\?v=26/, `${f} 未使用 app.css?v=26`);
+    assert.doesNotMatch(html, /v=2[4-6]/, `${f} 仍有上一版版本号`);
+    assert.match(html, /\/css\/app\.css\?v=27/, `${f} 未使用 app.css?v=27`);
     const scripts = html.match(/<script[^>]+src="[^"]+"/g) || [];
     assert.ok(scripts.length > 0, `${f} 缺少脚本引用`);
-    for (const s of scripts) assert.match(s, /\?v=26"/, `${f} 脚本版本不是 25：${s}`);
+    for (const s of scripts) assert.match(s, /\?v=27"/, `${f} 脚本版本不是 27：${s}`);
   }
   // batch 另有 schedule.js，同样不得混版
-  assert.match(read('public/batch.html'), /src="\/js\/schedule\.js\?v=26"/);
+  assert.match(read('public/batch.html'), /src="\/js\/schedule\.js\?v=27"/);
   // 缩略图尺寸仍是 API 参数，不参与静态版本号
   const common = read('public/js/common.js');
   assert.match(common, /function imageSrc\(image, w = 240\)/);
@@ -191,10 +191,13 @@ test('library / accounts / batch / 其余页面外壳贴合', () => {
   assert.match(batch, /class="card-h tile-head batch-output-head"/);
   assert.match(batch, /class="empty batch-empty tile-empty"/);
   // 弹层仍是独立 .mask/.modal，不套 tile
-  assert.match(batch, /class="modal batch-confirm"/);
+  assert.match(batch, /class="modal batch-confirm[^"]*"/);
   assert.doesNotMatch(batch, /class="[^"]*modal[^"]*tile/);
 
-  assert.match(read('public/login.html'), /class="login-card tile"/);
+  // 登录页 2026-10 改版，不再使用 login-card tile
+  const login = read('public/login.html');
+  assert.match(login, /class="login-panel"/);
+  assert.match(login, /class="login-content"/);
   assert.match(read('public/libaccounts.html'), /class="group tile tile--flush"/);
   assert.match(read('public/libaccounts.html'), /class="card-head tile-head"/);
   assert.match(read('public/libaccounts.html'), /class="card-body tile-body"/);

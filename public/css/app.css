@@ -1049,3 +1049,23 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 .x-test-hint:empty{margin-top:0}
 .x-test-hint.ck-ok{color:var(--green)}
 .x-test-hint.ck-bad{color:var(--red)}
+
+/* 22. 临近发布确认：仅新增专用类，不改变既有弹窗行为。 */
+.release-confirm{max-width:520px}
+.confirm-dialog{max-height:calc(100dvh - 68px);overflow-y:auto;overflow-wrap:anywhere}
+.confirm-dialog .confirm-actions{justify-content:flex-end}
+.confirm-dialog .confirm-actions .btn{min-height:40px;justify-content:center}
+.confirm-dialog :focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+.confirm-dialog:focus{outline:none}
+.confirm-dialog[aria-busy="true"] .confirm-submit{opacity:.8;cursor:wait}
+.near-time-warning{display:flex;align-items:flex-start;gap:10px;margin:0 20px 18px;padding:12px 14px;border:1px solid #E9AAAA;border-left:4px solid var(--red);border-radius:var(--r-sm);background:var(--red-soft);color:#991B1B;font-size:13px;font-weight:600;line-height:1.7;overflow-wrap:anywhere}
+.near-time-warning[hidden]{display:none}
+.near-time-warning-icon{flex:none;font-size:18px;line-height:1.3;color:#991B1B}
+@media(max-width:480px){
+  .confirm-dialog .confirm-actions{gap:8px}
+  .confirm-dialog .confirm-actions .btn{flex:1}
+}
+@media(prefers-reduced-motion:reduce){
+  .confirm-dialog{animation:none}
+  .confirm-dialog .btn{transition:none}
+}

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>发布动态 · 380nm</title>
-<link rel="stylesheet" href="/css/app.css?v=26">
+<link rel="stylesheet" href="/css/app.css?v=27">
 </head>
 <body>
 <div class="sidebar" id="sidebar"></div>
@@ -172,8 +172,23 @@
     </div>
   </main>
 </div>
+<div class="mask" id="release-confirm-mask" style="display:none" aria-hidden="true">
+  <div class="modal release-confirm confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="release-confirm-title" aria-describedby="release-confirm-body" tabindex="-1">
+    <div class="modal-head">
+      <h2 class="modal-title" id="release-confirm-title">确认发布</h2>
+    </div>
+    <div class="modal-body" id="release-confirm-body">发布时间：立即发布。确认加入发布队列？</div>
+    <div class="modal-foot confirm-actions">
+      <button class="btn" id="release-confirm-cancel" type="button">返回检查</button>
+      <button class="btn primary confirm-submit" id="release-confirm-ok" type="button">确认入队</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast-wrap"></div>
-<script src="/js/common.js?v=26"></script>
-<script src="/js/pages/release.js?v=26"></script>
+<script src="/js/common.js?v=27"></script>
+<script src="/js/confirm-dialog.js?v=27"></script>
+<script src="/js/near-time.js?v=27"></script>
+<script src="/js/pages/release.js?v=27"></script>
 </body>
 </html>

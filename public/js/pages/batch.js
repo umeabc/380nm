@@ -5,6 +5,7 @@
 
   const state = {
     phase: 'idle', // idle | parsing | planned | submitting | done
+    enqueueInFlight: false,
     accounts: [],
     templates: [],
     recentTopics: [],
@@ -136,10 +137,8 @@
       renderTopicChips();
     }));
 
-    // 确认弹窗
-    $('#confirm-cancel').addEventListener('click', () => { $('#confirm-mask').style.display = 'none'; });
-    $('#confirm-ok').addEventListener('click', confirmEnqueue);
-    $('#confirm-mask').addEventListener('click', (e) => { if (e.target === $('#confirm-mask')) $('#confirm-mask').style.display = 'none'; });
+    // 确认弹窗（由 ConfirmDialog controller 接管，删除旧监听）
+    // $('#confirm-ok').addEventListener 在 showConfirm 里统一绑定
   }
 
   function bindTopicSearch() {
@@ -500,7 +499,7 @@
     actions.style.display = '';
     actions.innerHTML = `
       ${failed ? '<button class="btn sm" id="retry-failed">重试解析失败项</button>' : ''}
-      <button class="btn primary" id="enqueue-all" ${ready ? '' : 'disabled'}>全部入队（${ready}）</button>
+      <button class="btn primary" id="enqueue-all" ${(ready && !state.enqueueInFlight) ? '' : 'disabled'}>全部入队（${ready}）</button>
     `;
     if ($('#retry-failed')) $('#retry-failed').addEventListener('click', () => toast('重试功能待实现', 'info'));
     if ($('#enqueue-all')) $('#enqueue-all').addEventListener('click', showConfirm);
@@ -694,9 +693,15 @@
     };
   }
 
+  let batchDialog = null;
+  let frozenReadyRows = [];
+
   function showConfirm() {
     const readyRows = state.rows.filter(r => r.status === 'ready');
     if (!readyRows.length) return;
+
+    // 冻结待入队快照
+    frozenReadyRows = readyRows;
 
     const account = state.accounts.find(a => a.id === state.config.accountId);
     const first = readyRows[0];
@@ -704,31 +709,59 @@
     const mm = String(dt.getMonth() + 1).padStart(2, '0'), dd = String(dt.getDate()).padStart(2, '0');
     const hh = String(dt.getHours()).padStart(2, '0'), mi = String(dt.getMinutes()).padStart(2, '0');
 
+    // 正文
     $('#confirm-body').innerHTML = `
       <p>将向「${esc(account.name)}」入队 ${readyRows.length} 条动态，最早 ${mm}-${dd} ${hh}:${mi}。</p>
       <p style="margin-top:8px">确认后不可撤销（可在「发布队列」中取消）。</p>
     `;
-    $('#confirm-mask').style.display = 'flex';
+
+    // 红色警告块：统计 30 分钟内（含过期）的项
+    const now = Date.now();
+    const summary = NearTime.summarizeNearTimes(
+      readyRows.map(r => r.scheduledAt),
+      now,
+      NearTime.BATCH_NEAR_MS
+    );
+    const warnEl = $('#confirm-warning');
+    const warnText = $('#confirm-warning-text');
+    if (summary.count > 0) {
+      warnText.textContent = `发布提醒：${summary.count} 条动态将在 30 分钟内发布或已过期，最早计划时间：${NearTime.formatLocalTime(summary.earliestMs)}。已过期的任务将按立即发布处理。`;
+      warnEl.style.display = '';
+    } else {
+      warnEl.style.display = 'none';
+    }
+
+    if (!batchDialog) {
+      batchDialog = ConfirmDialog.create({
+        mask: '#confirm-mask',
+        cancel: '#confirm-cancel',
+        confirm: '#confirm-ok'
+      });
+      $('#confirm-ok').addEventListener('click', confirmEnqueue);
+    }
+
+    batchDialog.open({ trigger: $('#enqueue-all') });
   }
 
   async function confirmEnqueue() {
-    const readyRows = state.rows.filter(r => r.status === 'ready');
-    $('#confirm-mask').style.display = 'none';
+    state.enqueueInFlight = true;
+    batchDialog.setLoading(true);
     state.phase = 'submitting';
 
-    const items = readyRows.map(buildJobItem);
+    // 提交冻结的快照，不是重新 filter
+    const items = frozenReadyRows.map(buildJobItem);
 
     try {
       const res = await api('POST', '/api/jobs/batch', { items });
       res.created.forEach(c => {
-        const row = readyRows[c.index];
+        const row = frozenReadyRows[c.index];
         if (row) {
           row.status = 'queued';
           row.jobId = c.id;
         }
       });
       res.failed.forEach(f => {
-        const row = readyRows[f.index];
+        const row = frozenReadyRows[f.index];
         if (row) {
           row.status = 'enqueue_failed';
           row.jobError = f.error;
@@ -737,9 +770,14 @@
       toast(`已入队 ${res.created.length} 条${res.failed.length ? `，${res.failed.length} 条失败` : ''}`, res.failed.length ? 'warn' : 'success');
       renderTable();
       state.phase = 'done';
+      state.enqueueInFlight = false;
+      batchDialog.setLoading(false);
+      batchDialog.close();
     } catch (e) {
       toast(e.message, 'error');
       state.phase = 'planned';
+      state.enqueueInFlight = false;
+      batchDialog.setLoading(false);
     }
   }
 
