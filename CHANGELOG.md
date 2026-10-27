@@ -2,6 +2,43 @@
 
 按时间倒序记录 380nm 的功能与修复。日期为提交日期。
 
+## 2026-10-27 · 临近发布二次确认 + 登录页改版
+
+**单张发布页**（`public/js/pages/release.js`，新增 `public/js/near-time.js`）
+
+- 「提交发布」拆为 `collectJobPayload()`（原有校验、组装 payload）与 `postJob()`（提交、成功后原地 reset），校验口径不变。
+- 计划时间**未填**（立即发布）或距当前 **≤10 分钟**时先弹确认框，确认后才发 `POST /api/jobs`；其余情况仍是一键直接提交。
+- **过去时间同样计入临近**：`src/routes.js` 对过去时间不报错而是归一为立即发布，因此文案写成「立即发布（原计划：…，已过期）」，避免用户以为按原时间排期。
+- 阈值统一收在 `public/js/near-time.js`（`RELEASE_NEAR_MS` / `BATCH_NEAR_MS`），UMD 双导出，浏览器与 node 测试共用同一份判定。
+- 弹窗打开时冻结 payload 快照，提交用快照；请求失败保留弹窗与快照可重试；`posting` 锁只覆盖请求期间（弹窗打开不算提交中，否则取消后再点会永久失灵）。
+
+**批量编排页**（`public/js/pages/batch.js`）
+
+- 确认框**保持始终弹窗**（原有拦截不减少）；当待入队行里 **≥1 行**距当前 **≤30 分钟**（含已过期）时，额外显示红色警告块：条数 + 最早计划时间，并说明已过期任务按立即发布处理。
+- 提交使用「打开弹窗时」冻结的 ready 行快照，避免弹窗期间表格变化导致展示集合与提交集合不一致。
+- 删除原先直接改 `style.display` 的取消/遮罩监听，统一交给 `ConfirmDialog` 控制器，否则旧监听会绕过 loading 锁。
+
+**弹窗控制器**（新增 `public/js/confirm-dialog.js`）
+
+- `ConfirmDialog.create({mask,cancel,confirm})` → `open/close/setLoading/destroy`；负责焦点圈定与恢复、ESC/遮罩关闭、背景 `inert`、提交中禁止关闭并显示「提交中…」。不判时间、不发请求。
+- 复用 `app.css` 既有 `.mask` / `.modal` 体系，仅新增 `.near-time-warning` 等追加类；两页弹窗补 `role="dialog"`、`aria-modal`、`aria-labelledby/describedby`，红块 `role="alert"`。
+
+**登录页改版**（`public/login.html`，新增 `public/css/login.css`）
+
+- 左右分栏卡片：左侧内联 SVG 植物视觉（零外部资源、无 CDN/远程图），右侧下划线式输入与沉稳灰紫主按钮；窄屏 <860px 单栏、植物区收为顶部窄条，输入字号 ≥16px。
+- 保留全部既有 id（`#login-form` / `#login-username` / `#login-password` / `#login-submit` / `#login-err`）与 `login.js`，登录逻辑零改动。参考图中的注册 tab 与 Google/Facebook 登录本应用没有对应能力，未伪造。
+
+**测试与静态资源**
+
+- 新增 `tests/near-time.test.js`（阈值边界、空/非法/过期、混合集合的最早时间、跨时区同一瞬间）；`tests/batch-page.test.js` 的 vm 桩加载 `near-time.js` 并覆盖警告块显示/隐藏。
+- `scripts/bust-assets.js` 版本号 `26 → 27`，并把 `login.css` 纳入重写；全部页面 `?v=` 统一。
+- 既有 `tests/ui23.test.js` 的版本断言与登录页/弹窗 class 断言随改版更新。
+
+**验证与已知边界**
+
+- `node --test tests/*.test.js`：137 通过 / 0 失败。测试机 172.29.133.24:8787 已部署；`/release` 四条路径（空时间、+5 分钟、过去、+3 小时）用 fetch 桩实测：前三条弹窗、第四条直发，取消后再次提交仍能弹出。
+- 批量红块目前只有单测与 DOM 级验证：未在测试机跑完整「解析真实链接 → 编排 → 入队」流程，避免往真实账号队列里塞任务。
+
 ## 2026-10-26 · 安全加固：原图鉴权 + 登录限速 + 文档对齐
 
 **原图 `/uploads` 不再是公开静态目录**（`src/uploads.js` + `src/image-access.js` + `src/storage/local.js`）
