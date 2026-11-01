@@ -12,7 +12,8 @@
   const state = {
     jobs: [], libAccounts: [], types: [],
     status: 'all', template: 'all', target: 'all', type: 'all', date: 'all',
-    group: 'target', collapsed: {}, q: ''
+    group: 'target', collapsed: {}, q: '',
+    selected: new Set()
   };
   const scopeQ = () => App.state.user && App.state.user.role === 'admin' && App.state.scopeAll ? '?scope=all' : '';
   const isAdminAll = () => App.state.user && App.state.user.role === 'admin' && App.state.scopeAll;
@@ -161,7 +162,11 @@
           <span class="t-imgs-n">共 ${imgs.length} 张</span>
         </div>`
       : '';
-    return `<article class="task" data-edit="${j.id}">
+    const chk = state.selected.has(j.id) ? ' checked' : '';
+    return `<article class="task ${chk ? 'is-selected' : ''}" data-edit="${j.id}">
+      <label class="task-select" title="选中该任务">
+        <input type="checkbox" data-select="${j.id}" aria-label="选中任务 ${esc(j.title || j.accountName || j.id)}"${chk}>
+      </label>
       ${timeCell}
       <div>
         <div class="t-meta">${typeChip}${tplChip}<span class="t-target">${esc(j.accountName || '')}</span>${j.title ? `<span class="tag-sm">${esc(j.title)}</span>` : ''}</div>
@@ -219,7 +224,135 @@
     }
     $('#resultInfo').textContent = '命中 ' + list.length + ' 条 / 队列共 ' + state.jobs.length + ' 条';
   }
-  function renderAll() { renderMetrics(); renderTabs(); renderFilterBar(); renderList(); App.refreshBadge(); }
+  function renderAll() { renderMetrics(); renderTabs(); renderFilterBar(); renderList(); renderSelectBar(); App.refreshBadge(); }
+
+  /* ---------- 多选 ---------- */
+  function filteredAllIds() { return visible().map((j) => j.id); }
+  function visibleIdsUncollapsed() {
+    // 仅当前展开的分组内可见（不分组 = 全部可见）
+    if (state.group === 'none') return filteredAllIds();
+    const out = [];
+    visible().forEach((j) => {
+      const k = state.group === 'target' ? (j.accountName || '未指定目标') : (j.templateName || '未指定模板');
+      if (!state.collapsed[k]) out.push(j.id);
+    });
+    return out;
+  }
+  function renderSelectBar() {
+    const vis = new Set(filteredAllIds());
+    const sel = [...state.selected];
+    const hidden = sel.filter((id) => !vis.has(id)).length;
+    const n = sel.length;
+    const info = $('#sbInfo');
+    if (info) {
+      info.textContent = n ? `已选 ${n} 条${hidden ? `（其中 ${hidden} 条不在当前筛选内）` : ''}` : '未选择任务';
+      info.classList.toggle('has-sel', n > 0);
+      info.classList.toggle('has-hidden', hidden > 0);
+    }
+    const btn = $('#exportBtn');
+    if (btn) {
+      btn.disabled = n === 0 || btn.classList.contains('loading');
+      btn.textContent = (btn.classList.contains('loading') ? '打包中…' : `导出所选（${n}）`);
+    }
+  }
+
+  /* ---------- 导出 / 导入 ---------- */
+  async function exportSelected() {
+    const ids = [...state.selected];
+    if (!ids.length || exportBusy) return;
+    exportBusy = true;
+    const btn = $('#exportBtn');
+    btn.classList.add('loading');
+    btn.disabled = true;
+    btn.textContent = '打包中…';
+    try {
+      const r = await fetch('/api/jobs/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids })
+      });
+      if (r.status === 401) { location.replace('/login?next=' + encodeURIComponent(location.pathname)); return; }
+      if (!r.ok) {
+        let data = null; try { data = await r.json(); } catch (e) { /* ignore */ }
+        throw new Error((data && data.error) || ('HTTP ' + r.status));
+      }
+      const blob = await r.blob();
+      const cd = r.headers.get('content-disposition') || '';
+      const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+      const name = m ? decodeURIComponent(m[1]) : ('380nm-queue-' + new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + '.zip');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      toast(`已导出 ${ids.length} 条任务`, 'success');
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      exportBusy = false;
+      renderSelectBar();
+    }
+  }
+  let exportBusy = false, importBusy = false;
+
+  function esc2(s) { return esc(String(s)); }
+  function renderImportPanel(res, err) {
+    const panel = $('#importPanel');
+    panel.hidden = false;
+    if (err) {
+      panel.innerHTML = `
+        <div class="ip-head">
+          <span class="ip-title">导入失败</span>
+          <button class="pv-x" type="button" data-ip-close="1" title="关闭">&times;</button>
+        </div>
+        <div class="ip-err">${esc2(err)}</div>`;
+      return;
+    }
+    const { created, skipped, failed } = res;
+    const rows = [].concat(
+      created.map((x) => ({ ok: 'ok', row: x.row, reason: '导入成功' })),
+      skipped.map((x) => ({ ok: 'skip', row: x.row, reason: x.reason })),
+      failed.map((x) => ({ ok: 'fail', row: x.row, reason: x.reason }))
+    ).sort((a, b) => a.row - b.row);
+    panel.innerHTML = `
+      <div class="ip-head">
+        <span class="ip-title">导入完成：成功 ${created.length} / 跳过 ${skipped.length} / 失败 ${failed.length}</span>
+        <button class="pv-x" type="button" data-ip-close="1" title="关闭">&times;</button>
+      </div>
+      ${rows.length ? `<details class="ip-details"><summary>查看每行结果（${rows.length} 行）</summary>
+        <table class="ip-table">
+          <tbody>${rows.map((x) => `<tr class="ip-${x.ok}"><td>第 ${esc2(x.row)} 行</td><td>${esc2(x.reason)}</td></tr>`).join('')}</tbody>
+        </table>
+      </details>` : ''}
+      ${res.folderId ? `<div class="ip-folder">已导入到分组：${esc2(res.folderId)}</div>` : ''}`;
+  }
+  async function importZip(file) {
+    if (!file || importBusy) return;
+    importBusy = true;
+    const btn = $('#importBtn');
+    btn.disabled = true; btn.textContent = '导入中…';
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await fetch('/api/jobs/import', { method: 'POST', body: fd });
+      if (r.status === 401) { location.replace('/login?next=' + encodeURIComponent(location.pathname)); return; }
+      let data = null; try { data = await r.json(); } catch (e) { /* ignore */ }
+      if (!r.ok) {
+        renderImportPanel(null, (data && data.error) || ('HTTP ' + r.status));
+        toast((data && data.error) || ('导入失败：HTTP ' + r.status), 'error');
+        return;
+      }
+      renderImportPanel(data, null);
+      toast(`导入完成：成功 ${data.created.length}，跳过 ${data.skipped.length}，失败 ${data.failed.length}`, 'success');
+      state.selected.clear();
+      await refresh().catch(() => {});
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      importBusy = false;
+      btn.disabled = false; btn.textContent = '导入 ZIP';
+    }
+  }
 
   /* ---------- 交互 ---------- */
   function clearFilters() {
@@ -230,6 +363,10 @@
   async function refresh() {
     const jobs = (await api('GET', '/api/jobs' + scopeQ())).jobs;
     state.jobs = jobs;
+    if (state.selected.size) {
+      const live = new Set(jobs.map((j) => j.id));
+      [...state.selected].forEach((id) => { if (!live.has(id)) state.selected.delete(id); });
+    }
     if (isAdminAll()) {
       try { state.libAccounts = (await api('GET', '/api/lib-accounts?scope=all')).accounts; } catch (e) { /* ignore */ }
     }
@@ -334,8 +471,34 @@
       setInterval(tick, 1000);
 
       document.addEventListener('click', (e) => {
+        // 才行：任务卡勾选框 → 仅切换选择，不触发整卡跳转（须最先判定）
+        if (e.target.closest('.task-select')) {
+          const cb = e.target.closest('[data-select]');
+          if (cb) {
+            if (cb.checked) state.selected.add(cb.dataset.select); else state.selected.delete(cb.dataset.select);
+            renderSelectBar();
+          }
+          return;
+        }
+        const ipx = e.target.closest('[data-ip-close]');
+        if (ipx) { $('#importPanel').hidden = true; return; }
+        const bulk = e.target.closest('[data-bulk]');
+        if (bulk) {
+          const mode = bulk.dataset.bulk;
+          if (mode === 'all') { filteredAllIds().forEach((id) => state.selected.add(id)); }
+          else if (mode === 'visible') { visibleIdsUncollapsed().forEach((id) => state.selected.add(id)); }
+          else if (mode === 'invert') {
+            const ids = new Set(filteredAllIds());
+            ids.forEach((id) => { if (state.selected.has(id)) state.selected.delete(id); else state.selected.add(id); });
+          }
+          else if (mode === 'clear') { state.selected.clear(); }
+          renderList(); renderSelectBar();
+          return;
+        }
+        if (e.target.closest('#exportBtn')) { exportSelected(); return; }
+        if (e.target.closest('#importBtn')) { $('#importFile').click(); return; }
         const tab = e.target.closest('.tab[data-status]');
-        if (tab) { state.status = tab.dataset.status; renderTabs(); renderList(); return; }
+        if (tab) { state.status = tab.dataset.status; renderTabs(); renderList(); renderSelectBar(); return; }
         const head = e.target.closest('.group-head');
         if (head) {
           const k = head.dataset.toggle;
@@ -364,13 +527,19 @@
         const s = e.target.closest('[data-sel]');
         if (s) {
           state[s.dataset.sel] = s.value;
-          renderTabs(); renderFilterBar(); renderList();
+          renderTabs(); renderFilterBar(); renderList(); renderSelectBar();
           return;
         }
         if (e.target.id === 'scope-queue') {
           App.state.scopeAll = e.target.checked;
+          state.selected.clear();
           try { state.libAccounts = (await api('GET', '/api/lib-accounts' + scopeQ())).accounts; } catch (e2) { /* ignore */ }
           await refresh().catch(() => {});
+        }
+        if (e.target.id === 'importFile' && e.target.files && e.target.files[0]) {
+          const f = e.target.files[0];
+          e.target.value = '';
+          importZip(f);
         }
       });
     }

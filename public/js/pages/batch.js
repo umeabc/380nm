@@ -17,7 +17,9 @@
     parsingIds: [],
     revision: 0,
     saveState: 'saved', // saving | saved | offline
-    savePending: false
+    savePending: false,
+    saveQueued: false,
+    saveDirty: false
   };
 
   let rowIdCounter = 0;
@@ -58,10 +60,16 @@
       const res = await api('GET', '/api/batch-draft');
       state.revision = res.revision || 0;
       state.rows = (res.rows || []).map(row => {
-        // 恢复时将 parsing/pending 改成 parse_failed
+        // 恢复时区分：parsing/pending 但已有解析产物 → 其实解析成功，只是末次状态没落库
         if (row.status === 'pending' || row.status === 'parsing') {
-          row.status = 'parse_failed';
-          row.error = '编排中断';
+          if ((row.images && row.images.length) || row.scheduledAt || row.title) {
+            row.status = 'ready';
+            row.error = null;
+            row.jobError = null;
+          } else {
+            row.status = 'parse_failed';
+            row.error = '编排中断';
+          }
         }
         return { ...row, editorOpen: false, parseProgress: { step: 0, done: 0, sub: '' }, collision: false };
       });
@@ -73,41 +81,61 @@
     }
   }
 
-  const debouncedSave = debounce(saveDraft, 500);
+  const debouncedSave = debounce(() => { state.saveDirty = true; saveDraft(); }, 500);
+  function draftBody() {
+    return {
+      revision: state.revision,
+      rows: state.rows.map(r => ({
+        id: r.id, url: r.url, status: r.status, config: r.config || {},
+        scheduledAt: r.scheduledAt, title: r.title, manualTitle: r.manualTitle,
+        manualTime: r.manualTime, images: r.images, selectedImages: r.selectedImages,
+        credit: r.credit, body: r.body, variables: r.variables, topic: r.topic,
+        error: r.jobError || r.error || '', createdAt: r.createdAt || new Date().toISOString()
+      })),
+      config: state.config
+    };
+  }
 
   async function saveDraft() {
-    if (state.savePending) return;
-    state.savePending = true;
-    updateSaveState('saving');
-    try {
-      const res = await api('PUT', '/api/batch-draft', {
-        revision: state.revision,
-        rows: state.rows.map(r => ({
-          id: r.id, url: r.url, status: r.status, config: r.config || {},
-          scheduledAt: r.scheduledAt, title: r.title, manualTitle: r.manualTitle,
-          manualTime: r.manualTime, images: r.images, selectedImages: r.selectedImages,
-          credit: r.credit, body: r.body, variables: r.variables, topic: r.topic,
-          error: r.jobError || r.error || '', createdAt: r.createdAt || new Date().toISOString()
-        })),
-        config: state.config
-      });
-      state.revision = res.revision;
-      updateSaveState('saved');
-    } catch (e) {
-      if (e.status === 409) {
-        // 冲突：重新加载
-        toast('结果已在别处更新，已重新加载', 'warn');
-        await restoreDraft();
-        renderTable();
-      } else {
-        updateSaveState('offline');
-        if (!state.saveErrorShown) {
-          toast('保存失败，请检查网络连接', 'error');
-          state.saveErrorShown = true;
+    // 合并保存：上一轮请求还在飞时，这一轮只排队，由 finally 里补发，不丢弃。
+    if (state.savePending) {
+      state.saveQueued = true;
+      return;
+    }
+    let attempts = 0;
+    while (true) {
+      state.savePending = true;
+      state.saveQueued = false;
+      if (state.saveState !== 'offline') updateSaveState('saving');
+      state.saveDirty = true;
+      try {
+        const res = await api('PUT', '/api/batch-draft', draftBody());
+        state.revision = res.revision;
+        state.saveDirty = false;
+        updateSaveState('saved');
+      } catch (e) {
+        if (e.status === 409) {
+          // 冲突：重新加载
+          toast('结果已在别处更新，已重新加载', 'warn');
+          await restoreDraft();
+          renderTable();
+        } else {
+          updateSaveState('offline');
+          if (!state.saveErrorShown) {
+            toast('保存失败，请检查网络连接', 'error');
+            state.saveErrorShown = true;
+          }
         }
+      } finally {
+        state.savePending = false;
       }
-    } finally {
-      state.savePending = false;
+      if (!state.saveQueued) return;
+      state.saveQueued = false;
+      if (++attempts >= 5) {
+        // 防御：连续补发超过上限则放弃，置为 offline 待下次触发。
+        updateSaveState('offline');
+        return;
+      }
     }
   }
 
@@ -545,7 +573,7 @@
     }
   }
 
-  function finalizeParsing(newIds = state.parsingIds) {
+  async function finalizeParsing(newIds = state.parsingIds) {
     state.phase = 'planned';
     $('#batch-fields').style.opacity = '';
     $('#batch-fields').style.pointerEvents = '';
@@ -557,7 +585,7 @@
     // 只给本次成功解析的新增行排期，旧结果保持不变。
     replan(newIds);
     state.parsingIds = [];
-    debouncedSave();
+    await saveDraft(); // 收尾必须落库：保证"解析完成"状态在返回前写入服务端
     renderTable();
   }
 
@@ -973,6 +1001,21 @@
     finalizeParsing(Array.from(parsingIds));
     saveDraft();
     toast('已中止解析', 'info');
+  }
+
+  // 离开页面兜底：keepalive 请求不 await，只在有未落盘修改时发。
+  if (typeof window.addEventListener === 'function') {
+    window.addEventListener('pagehide', () => {
+      if (!state.saveDirty) return;
+      try {
+        fetch('/api/batch-draft', {
+          method: 'PUT',
+          keepalive: true,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(draftBody())
+        }).catch(() => {});
+      } catch (e) { /* ignore */ }
+    });
   }
 
   /* 配置卡 sticky 只在高度不超过可视空间时启用：长配置保持 static，

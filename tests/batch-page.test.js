@@ -233,3 +233,112 @@ test('confirmEnqueue 成功时先解除 loading 再关闭确认弹窗', async ()
   assert.ok(closeIndex > loadingOffIndex);
   assert.equal(p.dialogCalls.includes('close-while-loading'), false);
 });
+
+test('saveDraft 在请求 in-flight 时不丢弃而是排队补发最新状态', async () => {
+  const savedBodies = [];
+  let gate = null;
+  const elements = new Map();
+  const $ = id => { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); };
+  const document = element();
+  document.body = { appendChild(el) { document.panel = el; } };
+  document.createElement = () => { const el = element(); el.querySelector = () => element(); return el; };
+  let putCount = 0;
+  const apiFn = (method, url, body) => {
+    if (method === 'GET' && url === '/api/batch-draft') return Promise.resolve({ revision: 0, rows: [], config: {} });
+    if (method === 'PUT' && url === '/api/batch-draft') {
+      putCount++;
+      savedBodies.push(body);
+      return putCount === 1 && gate ? gate.promise : Promise.resolve({ revision: (body.revision || 0) + 1 });
+    }
+    return Promise.reject(new Error('unexpected: ' + method + ' ' + url));
+  };
+  const context = vm.createContext({ console, Date, Map, Set, document,
+    fetch: async () => { throw new Error('no fetch'); },
+    AbortController, TextDecoder, TextEncoder, setTimeout, clearTimeout,
+    crypto: { randomUUID: () => 'uuid' },
+    window: { innerWidth: 1000, innerHeight: 800 },
+    App: { $, $$: () => [], api: apiFn, icon: () => '<svg></svg>', imageSrc: () => '', esc: s => String(s ?? ''),
+      boot: async () => {}, toast() {}, debounce: fn => fn },
+    ConfirmDialog: { create: () => ({ open() {}, close() { return true; }, setLoading() {} }) } });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/js/near-time.js'), 'utf8'), context);
+  context.NearTime = context.window.NearTime;
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/js/schedule.js'), 'utf8'), context);
+  context.BatchSchedule = context.window.BatchSchedule;
+  let source = fs.readFileSync(path.join(__dirname, '../public/js/pages/batch.js'), 'utf8');
+  source = source.replace(/\}\)\(\);\s*$/, 'window.testing = { state, saveDraft, draftBody }; })();');
+  await vm.runInContext(source, context);
+  const api2 = context.window.testing;
+
+  // 第一次保存挂起（等待 gate），期间 rows 变化后再保存：不能被丢弃。
+  let resolveFirst;
+  gate = { promise: new Promise(r => { resolveFirst = r; }) };
+  const first = api2.saveDraft();
+  const a = row('a'); a.title = '第一次';
+  api2.state.rows = [a];
+  await Promise.resolve();
+  const second = api2.saveDraft(); // in-flight → 应只置 saveQueued
+  assert.equal(api2.state.saveQueued, true);
+  a.title = '补发后的标题';
+  api2.state.rows = [a];
+  api2.saveDraft(); // 再次排队（仍应合并为一次补发）
+  resolveFirst({ revision: 1 });
+  gate = null;
+  await first; await second;
+  assert.equal(api2.state.savePending, false);
+  assert.equal(api2.state.saveQueued, false);
+  assert.equal(api2.state.saveDirty, false);
+  // 补发那次 PUT 带上的是最新标题（通过 revision 递增确认补发确实发生）
+  assert.equal(api2.state.revision, 2);
+  assert.equal(savedBodies.length, 2);
+  assert.equal(savedBodies[1].rows[0].title, '补发后的标题');
+});
+
+test('恢复草稿：有 images 的 parsing 行恢复为 ready，空行才标 parse_failed', async () => {
+  const elements = new Map();
+  const $ = id => { if (!elements.has(id)) elements.set(id, element()); return elements.get(id); };
+  const document = element();
+  document.body = { appendChild(el) { document.panel = el; } };
+  document.createElement = () => { const el = element(); el.querySelector = () => element(); return el; };
+  const draft = {
+    revision: 0,
+    rows: [
+      { id: 'r1', status: 'parsing', images: [{ url: 'https://img/1' }], scheduledAt: '', title: '' },
+      { id: 'r2', status: 'parsing', images: [], scheduledAt: '2026-10-12T10:00:00.000Z', title: '' },
+      { id: 'r3', status: 'pending', images: [], scheduledAt: '', title: '有标题' },
+      { id: 'r4', status: 'pending', images: [], scheduledAt: '', title: '' },
+      { id: 'r5', status: 'ready', images: [], scheduledAt: '', title: '' }
+    ],
+    config: {}
+  };
+  const apiFn = async (method, url, body) => {
+    if (method === 'GET' && url === '/api/batch-draft') return draft;
+    if (method === 'PUT' && url === '/api/batch-draft') return { revision: (body.revision || 0) + 1 };
+    throw new Error('unexpected: ' + method + ' ' + url);
+  };
+  const context = vm.createContext({ console, Date, Map, Set, document,
+    fetch: async () => { throw new Error('no fetch'); },
+    AbortController, TextDecoder, TextEncoder, setTimeout, clearTimeout,
+    crypto: { randomUUID: () => 'uuid' },
+    window: { innerWidth: 1000, innerHeight: 800 },
+    App: { $, $$: () => [], api: apiFn, icon: () => '<svg></svg>', imageSrc: () => '', esc: s => String(s ?? ''),
+      boot: async () => {}, toast() {}, debounce: fn => fn },
+    ConfirmDialog: { create: () => ({ open() {}, close() { return true; }, setLoading() {} }) } });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/js/near-time.js'), 'utf8'), context);
+  context.NearTime = context.window.NearTime;
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/js/schedule.js'), 'utf8'), context);
+  context.BatchSchedule = context.window.BatchSchedule;
+  let source = fs.readFileSync(path.join(__dirname, '../public/js/pages/batch.js'), 'utf8');
+  source = source.replace(/\}\)\(\);\s*$/, 'window.testing = { state, restoreDraft }; })();');
+  await vm.runInContext(source, context);
+  const api2 = context.window.testing;
+
+  await api2.restoreDraft();
+  const byId = Object.fromEntries(api2.state.rows.map(r => [r.id, r]));
+  assert.equal(byId.r1.status, 'ready'); // 有 images → ready
+  assert.equal(byId.r1.error, null);
+  assert.equal(byId.r2.status, 'ready'); // 有 scheduledAt → ready
+  assert.equal(byId.r3.status, 'ready'); // 有 title → ready
+  assert.equal(byId.r4.status, 'parse_failed'); // 全空 → 编排中断
+  assert.equal(byId.r4.error, '编排中断');
+  assert.equal(byId.r5.status, 'ready'); // 原 ready 不动
+});

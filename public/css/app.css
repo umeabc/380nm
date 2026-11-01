@@ -1081,3 +1081,36 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 @media(prefers-reduced-motion:reduce){
   .batch-save-state[data-state="saving"]::before{animation:none}
 }
+
+/* 24. 队列页 v30：多选 / 批量导出导入（只追加，不改既有类） */
+.queue-selectbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 16px;border-top:1px solid var(--line);font-size:12.5px;line-height:1.6}
+.queue-selectbar .sb-info{color:var(--text-3);flex:none}
+.queue-selectbar .sb-info.has-sel{color:var(--primary);font-weight:600}
+.queue-selectbar .sb-info.has-hidden{color:var(--amber)}
+.queue-selectbar .sb-sep{flex:none;width:1px;height:14px;background:var(--line)}
+.queue-selectbar .btn.sm{min-height:28px}
+.queue-selectbar #importBtn{color:var(--text-2)}
+.queue-selectbar #importBtn:disabled{opacity:.6;cursor:wait}
+.queue-selectbar #exportBtn.loading{opacity:.7;cursor:wait}
+.task-select{display:flex;align-items:center;flex:none;width:26px;cursor:pointer;padding:0 0 0 6px}
+.task-select input{width:15px;height:15px;accent-color:var(--primary);cursor:pointer;flex:none}
+.task{position:relative}
+.task.is-selected{background:#F5F7FF;box-shadow:inset 3px 0 0 var(--primary)}
+.import-panel{margin:12px 16px 16px;border:1px solid var(--line);border-radius:var(--r-sm);background:#FAFBFF;padding:12px 14px;font-size:12.5px;line-height:1.6}
+.import-panel[hidden]{display:none}
+.import-panel .ip-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.import-panel .ip-title{font-weight:600;color:var(--text-1)}
+.import-panel .ip-err{margin-top:6px;color:var(--red);word-break:break-all}
+.import-panel .ip-details summary{margin-top:6px;cursor:pointer;color:var(--primary)}
+.import-panel .ip-table{margin-top:6px;width:100%;border-collapse:collapse;max-height:240px;overflow-y:auto;display:block}
+.import-panel .ip-table td{padding:3px 10px 3px 0;vertical-align:top;word-break:break-all}
+.import-panel .ip-ok td{color:var(--green)}
+.import-panel .ip-skip td:first-child{color:var(--amber)}
+.import-panel .ip-fail td{color:var(--red)}
+.import-panel .ip-folder{margin-top:6px;color:var(--text-3)}
+.import-panel .pv-x{border:0;background:none;font-size:18px;line-height:1;cursor:pointer;color:var(--text-3);padding:0 2px}
+@media(max-width:759px){
+  .queue-selectbar{gap:8px;padding:10px 12px}
+  .queue-selectbar .btn.sm{flex:1 1 auto;justify-content:center}
+}
+@media(prefers-reduced-motion:reduce){.queue-selectbar #exportBtn.loading{transition:none}}

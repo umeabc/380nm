@@ -17,6 +17,12 @@ const upload = multer({
 
 const { importFromUrl, parseWork, parseSource, downloadImage, testXCredentials, ImportError } = require('./importers');
 const { buildZip } = require('./zip');
+const { unzip } = require('./zip');
+const { decodeMojibakeName } = require('./filename');
+const {
+  CSV_HEADERS, CSV_TYPE_SET, csvRow, sanitizeZipName, jobToCsvCells, buildQueueCsv, parseQueueCsv,
+  resolveCsvTime, magicForImage, imageExtMatchesMagic, contentTypeForMagic
+} = require('./queue-csv');
 const { cookieErrorText } = require('./cookie-monitor');
 const { mergeLibraryMentions } = require('./mentions');
 
@@ -822,12 +828,14 @@ module.exports = function createRoutes(ctx) {
         for (const f of files) {
           if (!f.mimetype || !f.mimetype.startsWith('image/')) continue;
           if (!f.buffer || !f.buffer.length) continue;
-          const { key, url } = await storage.put(f.buffer, f.originalname, f.mimetype);
+          // 修复 multer 把非 ASCII 文件名按 latin1 解码造成的乱码
+          const originalname = decodeMojibakeName(f.originalname);
+          const { key, url } = await storage.put(f.buffer, originalname, f.mimetype);
           const meta = {
             key,
             userId: req.user.id,
             folderId,
-            name: f.originalname || key,
+            name: originalname || key,
             url,
             size: f.size,
             contentType: f.mimetype,
@@ -1583,7 +1591,397 @@ module.exports = function createRoutes(ctx) {
     }
   });
 
-  // ===================== 日志（按用户隔离） =====================
+  // ===================== 发布队列导出 / 导入（zip + queue.csv） =====================
+  const zipUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 100 * 1024 * 1024, files: 1 }
+  });
+  const IMG_EXT_SET = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'avif']);
+  // CSV 行数/大小限额
+  const IMPORT_CSV_MAX_BYTES = 5 * 1024 * 1024;
+  const IMPORT_CSV_MAX_ROWS = 1000;
+  const IMPORT_IMG_MAX_BYTES = 20 * 1024 * 1024;
+  // 每用户一把内存锁：同一时刻只允许一个导入
+  const importLocks = new Set();
+
+  /** 库内/包内文件名去重：不区分大小写，重名加 (2)、(3)…，同 key 复用同一名字 */
+  function allocZipNames(images, jobs) {
+    const used = new Map(); // name(lower) -> name
+    const keyToName = new Map();
+    for (const job of jobs) {
+      for (const img of job.images || []) {
+        if (keyToName.has(img.key)) continue;
+        let name = sanitizeZipName(img.name || img.key);
+        const lower = name.toLowerCase();
+        if (used.has(lower)) {
+          const dot = name.lastIndexOf('.');
+          const stem = dot > 0 ? name.slice(0, dot) : name;
+          const ext = dot > 0 ? name.slice(dot) : '';
+          let n = 2;
+          let cand;
+          do { cand = `${stem}(${n})${ext}`; n++; } while (used.has(cand.toLowerCase()));
+          name = cand;
+        }
+        used.set(name.toLowerCase(), name);
+        keyToName.set(img.key, name);
+      }
+    }
+    return keyToName;
+  }
+
+  // POST /api/jobs/export：多选任务导出 zip（queue.csv + images/ + README.txt）
+  router.post('/jobs/export', requireAuth, async (req, res, next) => {
+    try {
+      const ids = Array.isArray(req.body && req.body.ids) ? req.body.ids.map(String) : [];
+      if (!ids.length) return res.status(400).json({ error: '未选择任务' });
+      const adminAll = req.user.role === 'admin' && req.query.scope === 'all';
+      const jobs = [];
+      for (const id of ids) {
+        const job = store.getJob(id);
+        // 本人任务；管理员 ?scope=all 可导出他人任务
+        if (!job || (job.userId !== req.user.id && !adminAll)) {
+          return res.status(404).json({ error: `任务 ${id} 不存在` });
+        }
+        jobs.push(job);
+      }
+      // 全包预检：任何一张图片缺失或归属不符 → 422，不生成残缺 zip
+      const keyToName = allocZipNames([], jobs);
+      for (const job of jobs) {
+        for (const img of job.images || []) {
+          const rec = store.listImages().find((i) => i.key === img.key);
+          if (!rec) {
+            return res.status(422).json({ error: `任务「${job.title || job.id}」的图片 ${img.key} 已丢失，无法导出` });
+          }
+          if (rec.userId !== job.userId) {
+            return res.status(422).json({ error: `任务「${job.title || job.id}」的图片 ${img.key} 归属与任务所有者不符，无法导出` });
+          }
+          try {
+            await storage.get(img.key);
+          } catch (e) {
+            return res.status(422).json({ error: `任务「${job.title || job.id}」的图片 ${img.key} 读取失败，无法导出` });
+          }
+        }
+      }
+      // 生成 CSV 行（超长单元格 → 422 说明）
+      let csvText;
+      try {
+        csvText = buildQueueCsv(jobs.map((job) => {
+          const names = (job.images || []).map((i) => keyToName.get(i.key));
+          return jobToCsvCells(job, names);
+        }));
+      } catch (e) {
+        return res.status(422).json({ error: e.message });
+      }
+      const csvBuf = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(csvText, 'utf8')]);
+      const readMe = Buffer.from([
+        '380nm 发布队列导出包', '',
+        '- queue.csv：任务清单（UTF-8 带 BOM，可直接用 Excel 打开）。',
+        '- images/：所有任务配图，queue.csv「配图」列按文件名引用。',
+        '- 计划时间列格式为 iso:<RFC3339 带时区偏移>，也接受 YYYY-MM-DD HH:mm（按 +08:00）。',
+        '- 以 = + - @ 开头的单元格在导出时前置了一个单引号，导入时会自动剥掉。',
+        '- 本包可通过「导入 zip」原样导回。'
+      ].join('\r\n'), 'utf8');
+      const entries = [{ name: 'queue.csv', buffer: csvBuf }, { name: 'README.txt', buffer: readMe }];
+      for (const job of jobs) {
+        for (const img of job.images || []) {
+          const name = keyToName.get(img.key);
+          if (entries.some((e) => e.name === 'images/' + name)) continue;
+          const got = await storage.get(img.key);
+          entries.push({ name: 'images/' + name, buffer: got.buffer, mtime: new Date(img.createdAt || Date.now()) });
+        }
+      }
+      const zip = buildZip(entries);
+      const d = new Date();
+      const p2 = (n) => String(n).padStart(2, '0');
+      const ts = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}`;
+      res.setHeader('content-type', 'application/zip');
+      res.setHeader('content-disposition', `attachment; filename="380nm-queue-${ts}.zip"`);
+      res.send(zip);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // GET /api/jobs/import-template：下载导入模板 zip
+  router.get('/jobs/import-template', requireAuth, (req, res) => {
+    const sample = jobToCsvCells({
+      title: '示例标题', scheduledAt: new Date(Date.now() + 3600000).toISOString(),
+      type: '原创', accountName: '账号名（需与账号库中名称一致）',
+      templateName: '模板名（需与已有模板名称一致）',
+      text: '这里是正文，可包含换行、逗号与引号。',
+      topic: null, mentions: []
+    }, ['示例图片.jpg']);
+    const csvText = [
+      csvRow(CSV_HEADERS),
+      csvRow(['# 说明行：以 # 开头的行会被忽略。请勿修改表头。']),
+      csvRow(['# 计划时间：iso:2026-11-05T14:00:00+08:00 或 2026-11-05 14:00（按 +08:00 解释，过去时间会导致该行失败）。']),
+      csvRow(['# 账号/模板列填写名称，按 NFKC + 去空格 + 忽略大小写唯一匹配，匹配不到或多于一个则该行失败。']),
+      csvRow(['# 话题列填 {"id":"...","name":"..."} 或留空；配图列为 JSON 文件名数组；提及列为 JSON 数组（可空 []）。']),
+      csvRow(['# 图片放在 images/ 目录下（不支持子目录），扩展名仅支持 jpg/jpeg/png/gif/webp/bmp/avif。']),
+      csvRow(['# 限制：zip ≤100MiB，条目 ≤2000，单图 ≤20MiB，解压总量 ≤200MiB，queue.csv ≤5MiB 且 ≤1000 行。']),
+      csvRow(sample)
+    ].join('');
+    const csvBuf = Buffer.concat([Buffer.from([0xEF, 0xBB, 0xBF]), Buffer.from(csvText, 'utf8')]);
+    const readMe = Buffer.from([
+      '380nm 发布队列导入模板', '',
+      '- 列顺序（表头勿改）：标题,计划时间,类型,账号,模板,正文,话题,配图,提及',
+      '- 时间格式：iso:2026-11-05T14:00:00+08:00 或 2026-11-05 14:00（按 +08:00 解释）；过去时间该行失败。',
+      '- 类型：原创 / 翻嵌 / 翻译 / 转载；账号、模板按名称唯一匹配（NFKC + 忽略大小写）。',
+      '- 配图：JSON 数组按 images/ 内文件名引用，保持顺序；数量不得超过模板上限。',
+      '- 图片放置规则：zip 根目录 queue.csv + images/ 一层目录；不支持子目录。',
+      '- 限制：zip ≤100MiB、条目 ≤2000、单图 ≤20MiB、解压总量 ≤200MiB、CSV ≤5MiB 且 ≤1000 行。'
+    ].join('\r\n'), 'utf8');
+    const zip = buildZip([
+      { name: 'queue.csv', buffer: csvBuf },
+      { name: 'README.txt', buffer: readMe },
+      { name: 'images/', buffer: Buffer.alloc(0) } // 目录占位条目
+    ]);
+    res.setHeader('content-type', 'application/zip');
+    res.setHeader('content-disposition', 'attachment; filename="380nm-queue-import-template.zip"');
+    res.send(zip);
+  });
+
+  // 名称匹配：NFKC + trim + 大小写不敏感唯一匹配
+  function matchByName(list, name, label) {
+    const key = String(name || '').normalize('NFKC').trim().toLowerCase();
+    if (!key) return { error: `${label}不能为空`, hit: null };
+    const hits = list.filter((x) => {
+      const n = String(x.uname || x.name || '').normalize('NFKC').trim().toLowerCase();
+      return n === key;
+    });
+    if (!hits.length) return { error: `未找到${label}「${name}」`, hit: null };
+    if (hits.length > 1) return { error: `${label}「${name}」匹配到多个，名称存在歧义`, hit: null };
+    return { hit: hits[0] };
+  }
+
+  // 导入用：只看指定用户的账号/模板
+  const listMy = (list, uid) => list.filter((x) => x.userId === uid);
+
+  // POST /api/jobs/import：导入 zip（queue.csv + images/）
+  router.post('/jobs/import', requireAuth, (req, res) => {
+    if (importLocks.has(req.user.id)) {
+      return res.status(409).json({ error: '已有导入正在进行，请稍后再试' });
+    }
+    importLocks.add(req.user.id);
+    zipUpload.single('file')(req, res, () => {
+      (async () => {
+        const created = [], skipped = [], failed = [];
+        const folderName = `导入 ${new Date().toLocaleString('zh-CN', {
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', hour12: false
+        }).replace(/\//g, '-')}`;
+        let folder = null;
+        const rowImages = []; // 失败行回滚用：本次导入新增的图片 key
+        try {
+          const f = req.file;
+          if (!f || !f.buffer || !f.buffer.length) {
+            return res.status(400).json({ error: '缺少 zip 文件（字段名 file）' });
+          }
+          let entries;
+          try {
+            entries = unzip(f.buffer, {
+              maxEntries: 2000,
+              maxTotalBytes: 200 * 1024 * 1024,
+              maxFileBytes: IMPORT_IMG_MAX_BYTES
+            });
+          } catch (e) {
+            const msg = e && e.name === 'ZipError' ? e.message : 'zip 解析失败';
+            return res.status(400).json({ error: msg });
+          }
+
+          // 结构预检：根 queue.csv（大小写兼容）+ images/ 一层；其他仅允许 README.txt
+          let csvEntry = null, csvCount = 0, unexpected = null;
+          const images = new Map(); // images/ 内文件名(原样) -> {name, buffer}
+          for (const e of entries) {
+            const segs = e.name.split('/');
+            if (segs.length === 1 && !e.isDir) {
+              if (segs[0].toLowerCase() === 'queue.csv') { csvEntry = e; csvCount++; }
+              else if (segs[0].toLowerCase() === 'readme.txt') { /* 允许 */ }
+              else { unexpected = e.name; break; }
+            } else if (segs[0] === 'images' && segs.length === 2 && !e.isDir) {
+              images.set(segs[1], { name: segs[1], buffer: e.buffer });
+            } else if (segs[0] === 'images' && segs.length === 1 && e.isDir) {
+              /* images/ 目录占位 */
+            } else if (e.isDir && segs.every(s => s === '')) {
+              /* 空 */
+            } else { unexpected = e.name; break; }
+          }
+          if (unexpected) return res.status(400).json({ error: `不允许的条目: ${unexpected}（仅接受根 queue.csv、images/ 一层目录与 README.txt）` });
+          if (!csvEntry || csvCount > 1) return res.status(400).json({ error: 'zip 根目录必须有且仅有一个 queue.csv' });
+          if (csvEntry.buffer.length > IMPORT_CSV_MAX_BYTES) {
+            return res.status(400).json({ error: 'queue.csv 超过 5MiB 上限' });
+          }
+
+          // 图片全包预检：扩展名白名单 + 魔数一致
+          for (const [fname, img] of images) {
+            const ext = path.extname(fname).toLowerCase().replace('.', '');
+            if (!IMG_EXT_SET.has(ext)) {
+              return res.status(400).json({ error: `images/${fname} 扩展名不在支持范围（jpg/jpeg/png/gif/webp/bmp/avif）` });
+            }
+            if (!imageExtMatchesMagic(ext, img.buffer)) {
+              return res.status(400).json({ error: `images/${fname} 内容与扩展名不符（魔数校验失败）` });
+            }
+          }
+
+          let rows;
+          try {
+            const csvText = csvEntry.buffer.toString('utf8');
+            // 限制 CSV 行数
+            const lineCount = csvText.split('\n').filter((l) => l.trim() !== '').length;
+            if (lineCount > IMPORT_CSV_MAX_ROWS + 1) {
+              return res.status(400).json({ error: `queue.csv 超过 ${IMPORT_CSV_MAX_ROWS} 行上限` });
+            }
+            rows = parseQueueCsv(csvText);
+          } catch (e) {
+            return res.status(400).json({ error: e.message });
+          }
+
+          // 本次导入新建一个文件夹（属主为导入者）
+          folder = { id: genId('fld'), userId: req.user.id, name: folderName, createdAt: new Date().toISOString() };
+          await store.addFolder(folder);
+
+          // 库内同名图片加 (2)（按导入者图库，不区分大小写）
+          const libNames = new Set(
+            store.listImages().filter((i) => i.userId === req.user.id)
+              .map((i) => String(i.name || '').toLowerCase())
+          );
+          const zipStored = new Map(); // zip 内条目名 -> 入库 meta（同条目只存一次）
+
+          for (const r of rows) {
+            if (r.skipped) { skipped.push({ row: r.row, reason: r.reason }); continue; }
+            let rowNewKeys = []; // 本行新增入库的图片 key（行失败时回滚）
+            const fail = (reason) => {
+              failed.push({ row: r.row, reason });
+              let chain = Promise.resolve();
+              for (const k of rowNewKeys) {
+                chain = chain
+                  .then(() => storage.delete(k)).catch(() => {})
+                  .then(() => store.deleteImage(k));
+              }
+              rowNewKeys = [];
+              return chain;
+            };
+            let rowFailed = false;
+            const rowFail = async (reason) => { await fail(reason); rowFailed = true; };
+            try {
+              // 标题 ≤20、正文非空、类型合法
+              if (r.title.length > 20) { await rowFail('标题最多 20 个字'); }
+              else if (!r.text.trim()) { await rowFail('正文不能为空'); }
+              else if (!CSV_TYPE_SET.has(r.type)) { await rowFail(`类型必须为 原创/翻嵌/翻译/转载（当前: ${r.type || '空'}）`); }
+              // 计划时间：过去时间 → 该行失败
+              else if (!resolveCsvTime(r.scheduledAt)) { await rowFail('计划时间格式不正确（接受 iso:<带偏移> 或 YYYY-MM-DD HH:mm）'); }
+              else if (resolveCsvTime(r.scheduledAt).getTime() <= Date.now()) { await rowFail('计划时间是过去时间'); }
+              else {
+                const when = resolveCsvTime(r.scheduledAt);
+                const accM = matchByName(listMy(store.listAccounts(), req.user.id), r.accountName, '账号');
+                const tplM = matchByName(listMy(store.listTemplates(), req.user.id), r.templateName, '模板');
+                const account = accM.hit, template = tplM.hit;
+                if (!account) await rowFail(accM.error || '账号匹配失败');
+                else if (!template) await rowFail(tplM.error || '模板匹配失败');
+                // 配图 JSON 数组（保序）
+                let imgs;
+                try { imgs = JSON.parse(r.images || '[]'); } catch (e) { imgs = null; }
+                const limit = Math.max(0, Math.min(MAX_IMAGES, template.maxImages || MAX_IMAGES));
+                let mentions;
+                try { mentions = JSON.parse(r.mentions || '[]'); } catch (e) { mentions = null; }
+                let topic = null;
+                if (!rowFailed && r.topic) {
+                  try {
+                    const t = JSON.parse(r.topic);
+                    if (t && t.name != null) topic = { id: t.id != null ? t.id : '', name: String(t.name) };
+                    else await rowFail('话题列格式不正确');
+                  } catch (e) { await rowFail('话题列不是合法 JSON'); }
+                }
+                if (!Array.isArray(imgs)) await rowFail('配图列必须是 JSON 数组');
+                else if (imgs.length > limit) await rowFail(`图片数量超出限制（模板最多 ${limit} 张）`);
+                else if (!Array.isArray(mentions)) await rowFail('提及列必须是 JSON 数组');
+                if (!rowFailed) {
+                  // 图片入库（同一 zip 内同条目只存一次）
+                  const jobImages = [];
+                  for (const fname of imgs) {
+                    const ent = images.get(String(fname));
+                    if (!ent) { await rowFail(`配图 ${fname} 不在 images/ 目录中`); break; }
+                    let meta = zipStored.get(ent.name);
+                    if (!meta) {
+                      const kind = magicForImage(ent.buffer);
+                      const { key, url } = await storage.put(ent.buffer, ent.name, contentTypeForMagic(kind));
+                      // 库内同名加 (2)
+                      let name = ent.name;
+                      let low = name.toLowerCase();
+                      if (libNames.has(low)) {
+                        const dot = name.lastIndexOf('.');
+                        const stem = dot > 0 ? name.slice(0, dot) : name;
+                        const ext = dot > 0 ? name.slice(dot) : '';
+                        let n = 2, cand;
+                        do { cand = `${stem}(${n})${ext}`; n++; } while (libNames.has(cand.toLowerCase()));
+                        name = cand; low = name.toLowerCase();
+                      }
+                      libNames.add(low);
+                      meta = {
+                        key, userId: req.user.id, folderId: folder.id, name,
+                        url, size: ent.buffer.length,
+                        contentType: contentTypeForMagic(kind),
+                        createdAt: new Date().toISOString()
+                      };
+                      await store.addImage(meta);
+                      zipStored.set(ent.name, meta);
+                      rowNewKeys.push(key);
+                    }
+                    jobImages.push({ key: meta.key, name: meta.name, url: meta.url });
+                  }
+                  if (!rowFailed) {
+                    // 任务直接落库：正文用 CSV 原文，不用模板重渲染
+                    const job = {
+                      id: genId('job'),
+                      userId: req.user.id,
+                      templateId: template.id,
+                      templateName: template.name,
+                      accountId: account.id,
+                      accountName: account.uname || account.name,
+                      text: r.text,
+                      images: jobImages,
+                      topic,
+                      title: r.title,
+                      mentions,
+                      type: r.type,
+                      slots: {},
+                      scheduledAt: when.toISOString(),
+                      status: 'pending',
+                      attempts: 0,
+                      lastError: null,
+                      publishedAt: null,
+                      dynamicId: '',
+                      dynamicUrl: '',
+                      createdAt: new Date().toISOString(),
+                      updatedAt: new Date().toISOString()
+                    };
+                    store.addJobSilent(job);
+                    created.push({ row: r.row, id: job.id });
+                  }
+                }
+              }
+            } catch (e) {
+              await fail(`导入失败: ${e.message}`);
+            }
+          }
+          store.save();
+          if (created.length) {
+            await store.addLog('info', `zip 导入：新建文件夹「${folderName}」，入队 ${created.length} 条任务（跳过 ${skipped.length}，失败 ${failed.length}）`, { userId: req.user.id });
+          }
+          res.json({ folderId: folder ? folder.id : null, created, skipped, failed });
+        } catch (e) {
+          res.status(500).json({ error: '导入失败: ' + e.message });
+        } finally {
+          importLocks.delete(req.user.id);
+        }
+      })().catch((e) => {
+        importLocks.delete(req.user.id);
+        if (!res.headersSent) res.status(500).json({ error: '导入失败: ' + e.message });
+      });
+    });
+  });
+
+
   router.get('/logs', requireAuth, (req, res) => {
     const limit = Math.min(500, Number(req.query.limit) || 100);
     const list = store.listLogs().filter(scopeFilter(req)).slice(0, limit);

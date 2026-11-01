@@ -2,6 +2,49 @@
 
 按时间倒序记录 380nm 的功能与修复。日期为提交日期。
 
+## 2026-11-01 · v30：队列多选导出 / ZIP 导入 / 文件名乱码修复
+
+**队列多选导出**（`public/js/pages/queue.js`、`src/routes.js`）
+
+- 每张任务卡左侧加复选框，工具条新增「全选 / 仅选可见 / 反选 / 清空 / 导出所选（N）」。
+- 选择状态存在 `state.selected: Set`，不依赖 DOM——队列每 5 秒轮询重渲染后按 id 恢复勾选，刷新时清掉已不存在的 id，切换「查看全部用户」清空选择；被筛选隐藏但已选中的数量会单独提示。
+- `POST /api/jobs/export { ids }` → zip：`queue.csv` + `images/` + `README.txt`。
+  - CSV 为 UTF-8 BOM / RFC4180，9 列固定：标题、计划时间、类型、账号、模板、正文、话题、配图、提及。
+  - 计划时间写成 `iso:2026-11-05T14:00:00+08:00`（带偏移，避免 Excel 改写与跨时区歧义）；配图与提及用 JSON 数组保序。
+  - 以 `= + - @` 开头的单元格前置 `'`，防公式注入；单元格超 32000 字符的任务整体 422，不产出残缺包。
+  - 导出前整包预检：任务图片缺失或归属不符直接 422；管理员 `scope=all` 可导他人任务，但每张图仍必须属于该任务的所有者。
+
+**队列 ZIP 导入**（`src/zip.js`、`src/queue-csv.js`、`src/routes.js`）
+
+- `src/zip.js` 新增 `unzip()`：EOCD → 中央目录 → 逐条核对 local header（方法/名称/CRC/实际长度），支持 store 与 deflate，`inflateRawSync` 带 `maxOutputLength`；拒绝 ZIP64、多卷、加密、数据描述符、符号链接、绝对路径/盘符/`..`/反斜杠/重复规范化路径；非 UTF-8 且含非 ASCII 的文件名明确报错，不猜 GBK。
+- 限额：压缩包 ≤100MiB、条目 ≤2000、单图 ≤20MiB、解压总量 ≤200MiB、CSV ≤5MiB 且 ≤1000 行。
+- `POST /api/jobs/import`：zip 内根 `queue.csv` + `images/` 一层（不接受子目录）。图片按扩展名 + 魔数双验；入库到新建的「导入 YYYY-MM-DD HH:mm」文件夹，库内同名加 `(2)`，同一条目只存一次；失败行的新增图片会回滚（storage + store 都删）。
+- 逐行校验：账号/模板名 NFKC + trim + 大小写不敏感唯一匹配（歧义或缺失→该行失败）；时间接受 `iso:` 或裸 `YYYY-MM-DD HH:mm`（按 +08:00）；**过去时间该行失败，不沿用「归一为立即发布」**；标题 ≤20、正文非空、配图数 ≤ 模板上限。
+- 任务直接落库（正文用 CSV 原文，不经模板重渲染），因此导出→导入可无损往返；每用户一把内存锁，并发导入 409。
+- 返回 `{ folderId, created[], skipped[], failed[] }`，行号从 2 起，空行与 `#` 注释行进 skipped。
+- `GET /api/jobs/import-template` 提供模板 zip（BOM 表头 + 示例行 + `#` 说明 + `images/` 占位 + README）。
+
+**文件名乱码修复**（`src/filename.js`、`scripts/fix-image-names.js`）
+
+- 成因：`multer` 的 `originalname` 按 latin1 解码 UTF-8 字节，中文/日文文件名变成 `ã‚¨ãƒª...`。生产库 569 张图里 289 张、加任务快照共 547 条受影响。
+- `decodeMojibakeName()` 五重门槛：全码点 ≤0xFF、含 0x80–0xFF、latin1→utf8 无替换字符、再编码回 latin1 逐字节一致、解码结果含非拉丁字符。最后一条是必需的——`Ã©tude.jpg` 这类真名同样"可逆"，不能被误改。
+- `/api/upload` 已接入；`src/importers.js` 不受影响（它的名字来自 API 文本/`decodeURIComponent`，不经过 multer），本次未改。
+- `scripts/fix-image-names.js`：默认 dry-run（总数/可修复数/前 10 条 before→after），`--apply` 先备份 `db.json.bak-names-<ts>`，再同时修 `images[].name` 与 `jobs[].images[].name` 快照。
+
+**测试**
+
+- 新增 `tests/zip-import.test.js`(16)、`tests/queue-csv.test.js`(17)、`tests/jobs-import-export.test.js`(16)、`tests/filename-mojibake.test.js`(8)；`tests/batch-page.test.js` 补 2 条。
+- `node --test tests/*.test.js`：209 通过 / 0 失败。
+
+**顺带修掉 v29 遗留的一个真 bug**
+
+- 批量编排「刷新后全部变成解析失败」：`saveDraft()` 里有 `if (state.savePending) return;`，解析过程中上一次保存还在飞、下一次就被丢弃，最后「解析完成」的状态没落库，F5 读到 `parsing` 就被标成失败。改为**合并不丢弃**（in-flight 时只记 `saveQueued`，结束后补发，上限 5 次），`finalizeParsing()` 改为 `await saveDraft()`，并加 `pagehide` 的 keepalive 兜底；恢复时对「有 images/scheduledAt/title 的 parsing 行」判为 `ready`，只有全空的才标「编排中断」。
+
+**验证**
+
+- 本机端到端（UTF-8 脚本构造数据）：建任务 → 导出 zip（BOM、9 列、`iso:` 时间、多行正文含逗号/引号/`=SUM`）→ 原样导入 → 标题与正文逐字符一致、图片进新文件夹并按库内同名加 `(2)`；过去时间的行返回「计划时间是过去时间」且不建任务。
+- 生产库副本 dry-run：569 张图 / 649 任务的库里 **547 条可修复**，抽样 `ã‚¨ãƒª...` → `エリ...` 正确，`Ã©tude.jpg` 未被误改。
+
 ## 2026-11-01 · 批量编排结果持久化 + 追加式编排
 
 **分批结果落库**（新增 `batchDrafts` 集合，`src/store.js` + `src/routes.js`）
