@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>批量编排 · 380nm</title>
-<link rel="stylesheet" href="/css/app.css?v=27">
+<link rel="stylesheet" href="/css/app.css?v=29">
 </head>
 <body>
 <div class="sidebar" id="sidebar"></div>
@@ -125,6 +125,7 @@
         <div class="card batch-output tile">
           <div class="card-h tile-head batch-output-head">
             <span>编排结果</span>
+            <span class="batch-save-state" id="batch-save-state" hidden></span>
             <span class="hint-r" id="result-summary"></span>
             <div id="result-actions" style="display:none;margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"></div>
           </div>
@@ -132,7 +133,7 @@
             <div class="empty batch-empty tile-empty">
               <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
               <div class="empty-t">还没有编排结果</div>
-              <div class="empty-s">在左侧录入作品链接并完成配置，点击「开始编排」生成预览。</div>
+              <div class="empty-s">编排结果自动保存，成功入队后移除。</div>
               <div class="hint" style="margin-top:12px">解析成功会抓取原图入图库；确认入队前不会创建发布任务。</div>
             </div>
           </div>
@@ -160,10 +161,10 @@
 </div>
 
 <div id="toast-wrap"></div>
-<script src="/js/common.js?v=27"></script>
-<script src="/js/schedule.js?v=27"></script>
-<script src="/js/confirm-dialog.js?v=27"></script>
-<script src="/js/near-time.js?v=27"></script>
-<script src="/js/pages/batch.js?v=27"></script>
+<script src="/js/common.js?v=29"></script>
+<script src="/js/schedule.js?v=29"></script>
+<script src="/js/confirm-dialog.js?v=29"></script>
+<script src="/js/near-time.js?v=29"></script>
+<script src="/js/pages/batch.js?v=29"></script>
 </body>
 </html>

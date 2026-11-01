@@ -16,10 +16,11 @@
    * @param {string} cfg.end - 时间窗终点 HH:MM（整点）
    * @param {number[]} cfg.avoid - 避让整点数组 [11, 13, 17, 19]
    * @param {string} cfg.prefix - 标题前缀
+   * @param {number} [cfg.after] - 可选的绝对下界（epoch毫秒），候选整点必须大于此时间
    * @returns {{slots: Array, relaxed: boolean, conflicts: string[]}}
    */
   function plan(cfg) {
-    const { N, date, start, end, avoid = [], prefix } = cfg;
+    const { N, date, start, end, avoid = [], prefix, after } = cfg;
 
     // 输入校验
     if (!N || N < 1) {
@@ -47,16 +48,20 @@
       throw new Error('结束时间必须晚于开始时间');
     }
 
-    // 计算时间窗整点数（含两端）
-    const M = endHour - startHour + 1;
-    if (N > M) {
-      throw new Error(`时间窗仅 ${M} 个整点，少于 ${N} 条，请扩大时间窗或分批编排`);
-    }
-
-    // 生成时间窗内所有整点
+    // 生成时间窗内所有整点，若提供 after 则过滤掉不大于 after 的整点
     const window = [];
     for (let h = startHour; h <= endHour; h++) {
+      if (after !== undefined && typeof after === 'number') {
+        const localDate = new Date(year, month - 1, day, h, 0, 0, 0);
+        if (localDate.getTime() <= after) continue;
+      }
       window.push(h);
+    }
+
+    // 计算可用整点数
+    const M = window.length;
+    if (N > M) {
+      throw new Error(`时间窗${after !== undefined ? '过滤后' : ''}仅 ${M} 个整点，少于 ${N} 条，请扩大时间窗或分批编排`);
     }
 
     // 尝试严格避让：在非避让点中查找连续段

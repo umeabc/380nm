@@ -11,12 +11,20 @@
     recentTopics: [],
     config: { accountId: '', templateId: '', topic: null, date: '', start: '10:00', end: '20:00', avoid: [11, 13, 17, 19], prefix: '优香' },
     links: { text: '', valid: [], invalid: [], duplicate: 0 },
-    rows: [], // { id, url, status, work, images, selectedImages, credit, title, scheduledAt, variables, topic, jobId, jobError, parseProgress, collision, manualTime }
+    rows: [], // { id, url, status, work, images, selectedImages, credit, title, scheduledAt, variables, topic, jobId, jobError, parseProgress, collision, manualTime, config }
     parseToken: 0,
-    abortController: null
+    abortController: null,
+    parsingIds: [],
+    revision: 0,
+    saveState: 'saved', // saving | saved | offline
+    savePending: false
   };
 
   let rowIdCounter = 0;
+  // 浮层句柄必须在 App.boot 之前声明：boot 内会走到 renderTable → closeTimePopover，
+  // 若声明留在文件下方，此处仍是 TDZ，刷新恢复草稿时会直接抛 ReferenceError。
+  let timePopover = null;
+  let popoverAnchor = null;
 
   // 初始化
   await App.boot({
@@ -24,6 +32,7 @@
     title: '批量编排',
     ready: async () => {
       await loadData();
+      await restoreDraft(); // 恢复草稿
       initUI();
       bindEvents();
     }
@@ -44,6 +53,82 @@
     }
   }
 
+  async function restoreDraft() {
+    try {
+      const res = await api('GET', '/api/batch-draft');
+      state.revision = res.revision || 0;
+      state.rows = (res.rows || []).map(row => {
+        // 恢复时将 parsing/pending 改成 parse_failed
+        if (row.status === 'pending' || row.status === 'parsing') {
+          row.status = 'parse_failed';
+          row.error = '编排中断';
+        }
+        return { ...row, editorOpen: false, parseProgress: { step: 0, done: 0, sub: '' }, collision: false };
+      });
+      if (res.config && typeof res.config === 'object') {
+        Object.assign(state.config, res.config);
+      }
+    } catch (e) {
+      console.warn('恢复草稿失败:', e);
+    }
+  }
+
+  const debouncedSave = debounce(saveDraft, 500);
+
+  async function saveDraft() {
+    if (state.savePending) return;
+    state.savePending = true;
+    updateSaveState('saving');
+    try {
+      const res = await api('PUT', '/api/batch-draft', {
+        revision: state.revision,
+        rows: state.rows.map(r => ({
+          id: r.id, url: r.url, status: r.status, config: r.config || {},
+          scheduledAt: r.scheduledAt, title: r.title, manualTitle: r.manualTitle,
+          manualTime: r.manualTime, images: r.images, selectedImages: r.selectedImages,
+          credit: r.credit, body: r.body, variables: r.variables, topic: r.topic,
+          error: r.jobError || r.error || '', createdAt: r.createdAt || new Date().toISOString()
+        })),
+        config: state.config
+      });
+      state.revision = res.revision;
+      updateSaveState('saved');
+    } catch (e) {
+      if (e.status === 409) {
+        // 冲突：重新加载
+        toast('结果已在别处更新，已重新加载', 'warn');
+        await restoreDraft();
+        renderTable();
+      } else {
+        updateSaveState('offline');
+        if (!state.saveErrorShown) {
+          toast('保存失败，请检查网络连接', 'error');
+          state.saveErrorShown = true;
+        }
+      }
+    } finally {
+      state.savePending = false;
+    }
+  }
+
+  function updateSaveState(newState) {
+    state.saveState = newState;
+    const el = $('#batch-save-state');
+    el.dataset.state = newState;
+    if (newState === 'saving') {
+      el.textContent = '保存中';
+      el.hidden = false;
+    } else if (newState === 'saved') {
+      el.textContent = '已保存';
+      el.hidden = false;
+      state.saveErrorShown = false;
+      setTimeout(() => { if (state.saveState === 'saved') el.hidden = true; }, 2000);
+    } else if (newState === 'offline') {
+      el.textContent = '未连接，暂未保存';
+      el.hidden = false;
+    }
+  }
+
   function initUI() {
     // 账号
     const accSel = $('#b-account');
@@ -52,26 +137,29 @@
       accSel.disabled = true;
     } else {
       accSel.innerHTML = '<option value="">— 选择发布账号 —</option>' +
-        state.accounts.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
+        state.accounts.map(a => `<option value="${esc(a.id)}" ${a.id === state.config.accountId ? 'selected' : ''}>${esc(a.name)}</option>`).join('');
     }
 
     // 模板
     const tplSel = $('#b-template');
     if (state.templates.length) {
       tplSel.innerHTML = state.templates.map((t, i) =>
-        `<option value="${esc(t.id)}" ${i === 0 ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
-      state.config.templateId = state.templates[0].id;
+        `<option value="${esc(t.id)}" ${t.id === state.config.templateId || (!state.config.templateId && i === 0) ? 'selected' : ''}>${esc(t.name)}</option>`).join('');
+      if (!state.config.templateId) state.config.templateId = state.templates[0].id;
     }
     updateTemplateHint();
 
-    // 日期：今天
-    const today = new Date();
-    $('#b-date').value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-    state.config.date = $('#b-date').value;
+    // 日期：恢复或今天
+    if (!state.config.date) {
+      const today = new Date();
+      state.config.date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    }
+    $('#b-date').value = state.config.date;
 
     // 时间窗
     $('#b-start').value = state.config.start;
     $('#b-end').value = state.config.end;
+    $('#b-title-prefix').value = state.config.prefix || '优香';
 
     // 避让整点
     renderAvoidGrid();
@@ -80,6 +168,12 @@
     renderRecentTopics();
 
     updateScheduleHint();
+
+    // 如果有恢复的行，显示表格
+    if (state.rows.length) {
+      state.phase = 'planned';
+      renderTable();
+    }
   }
 
   function updateTemplateHint() {
@@ -264,14 +358,21 @@
     if (!(tpl.variables || []).find(v => v.type === 'textarea')) { toast('该模板无可写入正文的变量', 'error'); return; }
     if (!state.links.valid.length) { toast('请先录入作品链接', 'error'); return; }
 
+    // 预检容量：计算 after
+    const existingTimes = state.rows
+      .filter(r => r.scheduledAt)
+      .map(r => new Date(r.scheduledAt).getTime());
+    const existingMax = existingTimes.length ? Math.max(...existingTimes) : undefined;
+
+    // 排期前预检
     try {
-      BatchSchedule.plan({ N: state.links.valid.length, ...state.config });
+      BatchSchedule.plan({ N: state.links.valid.length, ...state.config, after: existingMax });
     } catch (e) {
       toast(e.message, 'error');
       return;
     }
 
-    // 冻结配置，生成行
+    // 冻结配置，构造新行（追加）
     state.phase = 'parsing';
     state.parseToken++;
     state.abortController = new AbortController();
@@ -282,35 +383,54 @@
     $('#btn-start').innerHTML = `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 3a9 9 0 1 0 9 9"/></svg> 解析中…(0/${state.links.valid.length})`;
     $('#btn-abort').style.display = '';
 
-    state.rows = state.links.valid.map((url, i) => ({
-      id: `row_${++rowIdCounter}`,
+    // 构造新行快照
+    const cfgSnapshot = {
+      accountId: state.config.accountId,
+      templateId: state.config.templateId,
+      date: state.config.date,
+      start: state.config.start,
+      end: state.config.end,
+      avoid: [...state.config.avoid],
+      prefix: state.config.prefix
+    };
+
+    const newRows = state.links.valid.map((url, i) => ({
+      id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `row_${Date.now()}_${i}`,
       url,
-      status: 'pending', // pending | parsing | ready | queued | parse_failed | enqueue_failed
+      status: 'parsing',
+      config: cfgSnapshot,
       work: null,
       images: [],
       selectedImages: [],
       credit: '',
       title: '',
-      manualTitle: false, // 手动标题在重排时保持不变
+      manualTitle: false,
       scheduledAt: '',
       variables: {},
       topic: state.config.topic,
       jobId: null,
       jobError: null,
+      error: null,
       parseProgress: { step: 0, done: 0, sub: '' },
       collision: false,
-      manualTime: null
+      manualTime: null,
+      createdAt: new Date().toISOString()
     }));
+
+    state.rows = state.rows.concat(newRows);
+    state.parsingIds = newRows.map(row => row.id);
+
+    // 保存一次（status=parsing）
+    await saveDraft();
 
     renderProgress();
 
-    // 串行解析
+    // 串行解析（只解析 newRows）
     const token = state.parseToken;
     let completed = 0;
-    for (let i = 0; i < state.rows.length; i++) {
-      if (token !== state.parseToken) break; // 已中止
-      const row = state.rows[i];
-      row.status = 'parsing';
+    for (let i = 0; i < newRows.length; i++) {
+      if (token !== state.parseToken) break;
+      const row = newRows[i];
       renderProgress();
 
       try {
@@ -328,14 +448,18 @@
         if (e.name === 'AbortError') break;
         row.status = 'parse_failed';
         row.jobError = e.message || '解析失败';
+        row.error = e.message || '解析失败';
         completed++;
       }
+
+      // 防抖保存
+      debouncedSave();
       renderProgress();
     }
 
     // 完成：排期
     if (token === state.parseToken) {
-      finalizeParsing();
+      finalizeParsing(newRows.map(row => row.id));
     }
   }
 
@@ -421,7 +545,7 @@
     }
   }
 
-  function finalizeParsing() {
+  function finalizeParsing(newIds = state.parsingIds) {
     state.phase = 'planned';
     $('#batch-fields').style.opacity = '';
     $('#batch-fields').style.pointerEvents = '';
@@ -430,32 +554,48 @@
     $('#btn-start').textContent = '开始编排';
     $('#btn-abort').style.display = 'none';
 
-    // 对成功行排期
-    replan();
+    // 只给本次成功解析的新增行排期，旧结果保持不变。
+    replan(newIds);
+    state.parsingIds = [];
+    debouncedSave();
     renderTable();
   }
 
-  function replan() {
-    const readyRows = state.rows.filter(r => r.status === 'ready' && !r.jobId);
+  function rowConfig(row) {
+    return { ...state.config, ...((row && row.config) || {}) };
+  }
+
+  function replan(ids) {
+    const requestedIds = Array.isArray(ids) ? new Set(ids) : null;
+    const readyRows = state.rows.filter(row => row.status === 'ready' && (
+      requestedIds ? requestedIds.has(row.id) : !row.scheduledAt
+    ));
     if (!readyRows.length) return;
+
+    const targetIds = new Set(readyRows.map(row => row.id));
+    const excludedIds = requestedIds || targetIds;
+    const afterValues = state.rows
+      .filter(row => !excludedIds.has(row.id) && row.scheduledAt)
+      .map(row => new Date(row.scheduledAt).getTime())
+      .filter(Number.isFinite);
+    const after = afterValues.length ? Math.max(...afterValues) : undefined;
+    const cfg = rowConfig(readyRows[0]);
 
     try {
       const result = BatchSchedule.plan({
         N: readyRows.length,
-        ...state.config
+        ...cfg,
+        after
       });
       readyRows.forEach((row, i) => {
-        if (!row.manualTime) {
-          row.scheduledAt = result.slots[i].scheduledAt;
-          if (!row.manualTitle) row.title = result.slots[i].title;
-        }
+        if (!row.manualTime) row.scheduledAt = result.slots[i].scheduledAt;
+        if (!row.manualTitle) row.title = result.slots[i].title;
       });
 
-      // 显示relaxed警告
+      // 显示 relaxed 警告
       if (result.relaxed && result.conflicts.length) {
         const warn = $('#relaxed-warn');
         warn.style.display = '';
-        const mm = state.config.date.slice(5, 7), dd = state.config.date.slice(8, 10);
         warn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg> 时间窗内无法完全避开所选整点，以下条目落到了避让点：${result.conflicts.join('、')}。对应时间已标橙；仍可入队，或调整时间窗、避让点后重新编排。`;
       } else {
         $('#relaxed-warn').style.display = 'none';
@@ -467,17 +607,20 @@
 
   function renderProgress() {
     const box = $('#batch-state');
-    const total = state.rows.length;
-    const completed = state.rows.filter(r => r.status !== 'pending' && r.status !== 'parsing').length;
-    const current = state.rows.find(r => r.status === 'parsing');
+    const parsingSet = new Set(state.parsingIds || []);
+    const parsingRows = state.rows.filter(row => parsingSet.has(row.id));
+    const total = parsingRows.length;
+    const completed = parsingRows.filter(row => row.status !== 'pending' && row.status !== 'parsing').length;
+    const current = parsingRows.find(row => row.status === 'parsing');
+    const percent = total ? completed / total * 100 : 0;
 
     box.innerHTML = `<div class="batch-progress">
       <div style="display:flex;justify-content:space-between;margin-bottom:8px">
         <span style="font-weight:600">正在解析作品</span>
         <span>已完成 ${completed}/${total}</span>
       </div>
-      <div class="batch-progress-bar"><div style="width:${completed / total * 100}%;background:var(--primary);height:100%;border-radius:999px"></div></div>
-      ${current ? `<div style="margin-top:10px;font-size:12px;color:var(--text-2)">正在解析第 ${state.rows.indexOf(current) + 1}/${total} 条；已完成结果将保留</div>` : ''}
+      <div class="batch-progress-bar"><div style="width:${percent}%;background:var(--primary);height:100%;border-radius:999px"></div></div>
+      ${current ? `<div style="margin-top:10px;font-size:12px;color:var(--text-2)">正在解析第 ${parsingRows.indexOf(current) + 1}/${total} 条；已完成结果将保留</div>` : ''}
     </div>`;
   }
 
@@ -490,11 +633,10 @@
     const summary = $('#result-summary');
     const actions = $('#result-actions');
 
-    const ready = state.rows.filter(r => r.status === 'ready').length;
-    const queued = state.rows.filter(r => r.status === 'queued').length;
+    const ready = state.rows.filter(r => r.status === 'ready' || r.status === 'enqueue_failed').length;
     const failed = state.rows.filter(r => r.status === 'parse_failed' || r.status === 'enqueue_failed').length;
 
-    summary.textContent = `共 ${state.rows.length} 条 · 待入队 ${ready} · 已入队 ${queued} · 失败 ${failed}`;
+    summary.textContent = `共 ${state.rows.length} 条 · 待入队 ${ready} · 失败 ${failed}`;
 
     actions.style.display = '';
     actions.innerHTML = `
@@ -533,7 +675,8 @@
     const timeStr = dt ? `${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')} ${String(dt.getHours()).padStart(2, '0')}:00` : '解析后生成';
 
     const editable = row.status === 'ready' || row.status === 'enqueue_failed';
-    const timeClass = row.collision ? 'is-collision' : dt && state.config.avoid.includes(dt.getHours()) ? 'is-avoid' : '';
+    const cfg = rowConfig(row);
+    const timeClass = row.collision ? 'is-collision' : dt && (cfg.avoid || []).includes(dt.getHours()) ? 'is-avoid' : '';
     return `<tr class="batch-row ${row.collision ? 'has-collision' : ''}" data-row-id="${esc(row.id)}">
       <td class="batch-cell">${i + 1}</td>
       <td class="batch-cell">${thumb}</td>
@@ -541,7 +684,7 @@
       <td class="batch-cell"><span class="batch-time-control"><span class="pill gray batch-time-badge ${timeClass}">${timeStr}</span>${editable && dt ? '<button type="button" class="icon-btn sm batch-time-edit" aria-label="修改计划时间"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>' : ''}</span></td>
       <td class="batch-cell batch-credit">${esc(row.credit).replace(/\n/g, '<br>')}</td>
       <td class="batch-cell">${row.images.length ? `${row.selectedImages.length} 张` : '—'}</td>
-      <td class="batch-cell">${statusMap[row.status] || ''}${row.jobError ? '<div class="batch-row-error">' + esc(row.jobError) + '</div>' : ''}</td>
+      <td class="batch-cell">${statusMap[row.status] || ''}${(row.jobError || row.error) ? '<div class="batch-row-error">' + esc(row.jobError || row.error) + '</div>' : ''}</td>
       <td class="batch-cell batch-row-actions"><button type="button" class="btn sm batch-edit" ${editable ? '' : 'disabled'}>修改动态</button><button type="button" class="icon-btn danger batch-delete" aria-label="删除">${icon('trash')}</button></td>
     </tr>${row.editorOpen && editable ? renderRowEditor(row) : ''}`;
   }
@@ -550,6 +693,7 @@
   function saveTitle(row, value) {
     row.title = value.slice(0, 20);
     row.manualTitle = true;
+    debouncedSave();
   }
 
   function editTitle(row, cell) {
@@ -580,14 +724,15 @@
 
   // 时间选项包含避让点与占用点，允许用户主动选择撞点。
   function timeOptions(row) {
+    const cfg = rowConfig(row);
     const dt = new Date(row.scheduledAt);
     const date = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
     const options = [];
-    for (let h = Number(state.config.start.slice(0, 2)); h <= Number(state.config.end.slice(0, 2)); h++) {
+    for (let h = Number(cfg.start.slice(0, 2)); h <= Number(cfg.end.slice(0, 2)); h++) {
       const time = `${String(h).padStart(2, '0')}:00`;
-      const slot = BatchSchedule.plan({ N: 1, date, start: time, end: time, prefix: state.config.prefix }).slots[0];
+      const slot = BatchSchedule.plan({ N: 1, date, start: time, end: time, prefix: cfg.prefix }).slots[0];
       const occupied = state.rows.some(r => r !== row && r.scheduledAt === slot.scheduledAt);
-      options.push({ ...slot, label: `${time}${state.config.avoid.includes(h) ? ' · 避让点' : ''}${occupied ? ' · 已被其他行占用' : ''}` });
+      options.push({ ...slot, label: `${time}${(cfg.avoid || []).includes(h) ? ' · 避让点' : ''}${occupied ? ' · 已被其他行占用' : ''}` });
     }
     return options;
   }
@@ -607,10 +752,9 @@
     row.manualTime = slot.scheduledAt;
     if (!row.manualTitle) row.title = slot.title;
     detectCollisions();
+    debouncedSave();
   }
 
-  let timePopover = null;
-  let popoverAnchor = null;
   function closeTimePopover() {
     if (timePopover) timePopover.remove();
     timePopover = null;
@@ -663,31 +807,34 @@
       el.querySelector('.batch-edit').addEventListener('click', () => { row.editorOpen = !row.editorOpen; renderTable(); });
       el.querySelector('.batch-delete').addEventListener('click', () => {
         state.rows = state.rows.filter(r => r !== row);
-        replan();
+        saveDraft();
         renderTable();
       });
     });
     box.querySelectorAll('[data-editor-id]').forEach(el => {
       const row = state.rows.find(r => r.id === el.dataset.editorId);
       el.querySelector('[data-field="title"]').addEventListener('input', e => saveTitle(row, e.target.value));
-      el.querySelector('[data-field="body"]').addEventListener('input', e => { row.body = e.target.value; });
-      el.querySelector('[data-field="topic"]').addEventListener('input', e => { row.topic = e.target.value.trim() ? { name: e.target.value.trim() } : null; });
+      el.querySelector('[data-field="body"]').addEventListener('input', e => { row.body = e.target.value; debouncedSave(); });
+      el.querySelector('[data-field="topic"]').addEventListener('input', e => { row.topic = e.target.value.trim() ? { name: e.target.value.trim() } : null; debouncedSave(); });
       el.querySelectorAll('[data-image]').forEach(input => input.addEventListener('change', () => {
         const selected = Array.from(el.querySelectorAll('[data-image]:checked')).map(item => row.images[Number(item.dataset.image)]);
-        const tpl = state.templates.find(t => t.id === state.config.templateId);
-        if (selected.length > (tpl.maxImages || 9)) { input.checked = false; toast('超过模板图片上限', 'error'); return; }
+        const cfg = rowConfig(row);
+        const tpl = state.templates.find(t => t.id === cfg.templateId);
+        if (selected.length > (tpl?.maxImages || 9)) { input.checked = false; toast('超过模板图片上限', 'error'); return; }
         row.selectedImages = selected;
+        debouncedSave();
       }));
     });
   }
 
   // 提交统一使用行上最新的标题、正文和配图。
   function buildJobItem(row) {
-    const tpl = state.templates.find(t => t.id === state.config.templateId);
-    const mainVar = (tpl.variables || []).find(v => v.type === 'textarea');
+    const cfg = rowConfig(row);
+    const tpl = state.templates.find(t => t.id === cfg.templateId);
+    const mainVar = (tpl?.variables || []).find(v => v.type === 'textarea');
     return {
-      templateId: state.config.templateId, accountId: state.config.accountId,
-      variables: { ...row.variables, [mainVar.key]: row.body ?? row.credit },
+      templateId: cfg.templateId, accountId: cfg.accountId,
+      variables: { ...row.variables, ...(mainVar ? { [mainVar.key]: row.body ?? row.credit } : {}) },
       images: row.selectedImages, topic: row.topic, title: row.title,
       mentions: [], type: '原创', scheduledAt: row.scheduledAt
     };
@@ -697,28 +844,43 @@
   let frozenReadyRows = [];
 
   function showConfirm() {
-    const readyRows = state.rows.filter(r => r.status === 'ready');
+    const readyRows = state.rows.filter(r => r.status === 'ready' || r.status === 'enqueue_failed');
     if (!readyRows.length) return;
 
-    // 冻结待入队快照
-    frozenReadyRows = readyRows;
+    // 深拷贝冻结待入队快照，确认弹窗打开后的编辑不影响本次提交。
+    frozenReadyRows = JSON.parse(JSON.stringify(readyRows));
 
-    const account = state.accounts.find(a => a.id === state.config.accountId);
-    const first = readyRows[0];
+    const first = frozenReadyRows.reduce((earliest, row) => {
+      if (!earliest) return row;
+      return new Date(row.scheduledAt).getTime() < new Date(earliest.scheduledAt).getTime() ? row : earliest;
+    }, null);
     const dt = new Date(first.scheduledAt);
     const mm = String(dt.getMonth() + 1).padStart(2, '0'), dd = String(dt.getDate()).padStart(2, '0');
     const hh = String(dt.getHours()).padStart(2, '0'), mi = String(dt.getMinutes()).padStart(2, '0');
+    const accountCounts = new Map();
+    frozenReadyRows.forEach(row => {
+      const accountId = rowConfig(row).accountId;
+      accountCounts.set(accountId, (accountCounts.get(accountId) || 0) + 1);
+    });
+    const accountGroups = Array.from(accountCounts, ([accountId, count]) => ({
+      accountId,
+      count,
+      name: state.accounts.find(account => account.id === accountId)?.name || accountId || '未知账号'
+    }));
 
-    // 正文
+    // 单账号保持原文案，多账号按账号分别列出数量。
+    const bodyLine = accountGroups.length === 1
+      ? `将向「${esc(accountGroups[0].name)}」入队 ${frozenReadyRows.length} 条动态，最早 ${mm}-${dd} ${hh}:${mi}。`
+      : `将${accountGroups.map(group => `向「${esc(group.name)}」入队 ${group.count} 条`).join('、')}动态，最早 ${mm}-${dd} ${hh}:${mi}。`;
     $('#confirm-body').innerHTML = `
-      <p>将向「${esc(account.name)}」入队 ${readyRows.length} 条动态，最早 ${mm}-${dd} ${hh}:${mi}。</p>
+      <p>${bodyLine}</p>
       <p style="margin-top:8px">确认后不可撤销（可在「发布队列」中取消）。</p>
     `;
 
     // 红色警告块：统计 30 分钟内（含过期）的项
     const now = Date.now();
     const summary = NearTime.summarizeNearTimes(
-      readyRows.map(r => r.scheduledAt),
+      frozenReadyRows.map(r => r.scheduledAt),
       now,
       NearTime.BATCH_NEAR_MS
     );
@@ -744,38 +906,55 @@
   }
 
   async function confirmEnqueue() {
+    if (state.enqueueInFlight || !frozenReadyRows.length) return;
     state.enqueueInFlight = true;
     batchDialog.setLoading(true);
     state.phase = 'submitting';
 
-    // 提交冻结的快照，不是重新 filter
-    const items = frozenReadyRows.map(buildJobItem);
+    const rowIds = frozenReadyRows.map(row => row.id);
 
     try {
-      const res = await api('POST', '/api/jobs/batch', { items });
-      res.created.forEach(c => {
-        const row = frozenReadyRows[c.index];
-        if (row) {
-          row.status = 'queued';
-          row.jobId = c.id;
-        }
+      const res = await api('POST', '/api/batch-draft/enqueue', { revision: state.revision, rowIds });
+      state.revision = res.revision;
+      if (Array.isArray(res.rows)) {
+        state.rows = res.rows.map(row => ({
+          ...row,
+          editorOpen: false,
+          parseProgress: { step: 0, done: 0, sub: '' },
+          collision: false
+        }));
+      } else {
+        const createdIds = new Set((res.created || []).map(item => item.rowId));
+        state.rows = state.rows.filter(row => !createdIds.has(row.id));
+      }
+
+      const failedById = new Map((res.failed || []).map(item => [item.rowId, item.error]));
+      state.rows.forEach(row => {
+        if (!failedById.has(row.id)) return;
+        row.status = 'enqueue_failed';
+        row.error = failedById.get(row.id);
+        row.jobError = failedById.get(row.id);
       });
-      res.failed.forEach(f => {
-        const row = frozenReadyRows[f.index];
-        if (row) {
-          row.status = 'enqueue_failed';
-          row.jobError = f.error;
-        }
-      });
-      toast(`已入队 ${res.created.length} 条${res.failed.length ? `，${res.failed.length} 条失败` : ''}`, res.failed.length ? 'warn' : 'success');
+      if (failedById.size) await saveDraft();
+
+      toast(`已入队 ${(res.created || []).length} 条${failedById.size ? `，${failedById.size} 条失败` : ''}`, failedById.size ? 'warn' : 'success');
+      state.phase = state.rows.length ? 'planned' : 'done';
       renderTable();
-      state.phase = 'done';
-      state.enqueueInFlight = false;
       batchDialog.setLoading(false);
       batchDialog.close();
+      frozenReadyRows = [];
     } catch (e) {
-      toast(e.message, 'error');
+      if (e.status === 409) {
+        toast('结果已在别处更新，已重新加载', 'warn');
+        await restoreDraft();
+        renderTable();
+        batchDialog.setLoading(false);
+        batchDialog.close();
+      } else {
+        toast(e.message, 'error');
+      }
       state.phase = 'planned';
+    } finally {
       state.enqueueInFlight = false;
       batchDialog.setLoading(false);
     }
@@ -784,8 +963,15 @@
   function abortParsing() {
     if (state.abortController) state.abortController.abort();
     state.parseToken++;
-    state.rows = state.rows.filter(r => r.status !== 'pending' && r.status !== 'parsing');
-    finalizeParsing();
+    const parsingIds = new Set(state.parsingIds || []);
+    state.rows.forEach(row => {
+      if (!parsingIds.has(row.id) || (row.status !== 'pending' && row.status !== 'parsing')) return;
+      row.status = 'parse_failed';
+      row.error = '已中止';
+      row.jobError = '已中止';
+    });
+    finalizeParsing(Array.from(parsingIds));
+    saveDraft();
     toast('已中止解析', 'info');
   }
 

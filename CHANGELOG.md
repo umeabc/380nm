@@ -2,6 +2,47 @@
 
 按时间倒序记录 380nm 的功能与修复。日期为提交日期。
 
+## 2026-11-01 · 批量编排结果持久化 + 追加式编排
+
+**分批结果落库**（新增 `batchDrafts` 集合，`src/store.js` + `src/routes.js`）
+
+- 每个用户一份草稿：`{ userId, revision, rows, config, updatedAt }`，按 `user.id` 隔离，管理员「查看全部用户」视角不扩权。
+- 行只存必要字段（`id/url/status/config/scheduledAt/title/manualTitle/manualTime/images/selectedImages/credit/body/variables/topic/error/createdAt`），**不存 base64、不存解析中间态**。
+- 接口：`GET /api/batch-draft`、`PUT /api/batch-draft`（整份替换 + revision CAS，冲突 409）、`POST /api/batch-draft/enqueue`。
+- 保存时校验：≤50 行、id 唯一、status 枚举、`scheduledAt` 合法、图片必须属于当前用户、`selectedImages ⊆ images`、账号/模板归属、字段限长。
+- 老库没有该集合时初始化为空数组，不做迁移。
+
+**入队即删除**（`POST /api/batch-draft/enqueue`）
+
+- 改成服务端一次请求内完成「建任务 + 删除成功行 + 落盘」，不再走「先 `POST /api/jobs/batch` 再删草稿」的两段式。
+- 每条任务写入 `sourceDraftId`：同一行重复提交（超时重试）不会产生第二份任务。
+- 部分失败只保留失败行并回传 `failed[]`，可继续重试。
+- 新增安全护栏：`status` 不是 `ready`/`enqueue_failed` 或 `scheduledAt` 为空/非法的行**拒绝入队**。此前这类行会被 `createJobFromInput` 归一成"立即发布"，等于把没排期的草稿立刻发出去。
+
+**追加式编排**（`public/js/schedule.js` + `public/js/pages/batch.js`）
+
+- `BatchSchedule.plan()` 新增可选 `after`（绝对时间下界）：先过滤掉不晚于该时刻的候选整点，再按原有避让/连续段算法选位；不传时行为与返回值完全不变。
+- `startParsing()` 不再覆盖 `state.rows`，新批次追加在末尾；**解析循环只遍历新行**，旧行不会被重解析。
+- `replan(ids)` 只给指定行排期，`after` 取其它行的最大计划时间；旧行的标题/时间/配图一律不动。容量不足在**解析前**就拒绝，提示扩大时间窗或换后一天。
+- 行内保存**配置快照**（账号/模板/日期/时间窗/避让/前缀）：`timeOptions`、避让高亮、选图上限、`buildJobItem` 都读行自己的快照，切换账号/模板后旧行不会发错。
+- 删除行不再触发重排补位；标题/时间/正文/话题/选图编辑都会落库（防抖 500ms）。
+- 刷新恢复时 `pending/parsing` 行标为「编排中断」，不自动重跑；`abortParsing` 也改为保留并标记，符合"只有入队或单条删除才消失"。
+- 结果区新增保存状态指示器（保存中 / 已保存 / 未连接，暂未保存）；409 冲突时自动重拉服务端版本。
+
+**修掉一个只在刷新恢复时出现的崩溃**
+
+- `initUI()` 在 `App.boot` 内同步调用 `renderTable()` → `closeTimePopover()`，而 `let timePopover` 声明在文件靠下的位置，此时处于 TDZ，抛 `ReferenceError` 并吞掉后续 `bindEvents()`：页面有草稿却空白、按钮无响应。已把 `timePopover`/`popoverAnchor` 声明上移到 `App.boot` 之前。
+
+**测试与静态资源**
+
+- 新增 `tests/batch-draft.test.js`（GET/PUT/409/400/部分成功/幂等/越权/安全护栏）；`tests/schedule.test.js` 补 `after` 边界；`tests/batch-page.test.js` 补"追加不动旧行""只排新行""先解除 loading 再关闭弹窗"。
+- 静态资源版本 `27 → 29`（中途修 TDZ 又升了一次），全部页面 `?v=` 统一。
+
+**验证**
+
+- `node --test tests/*.test.js`：150 通过 / 0 失败。
+- 本机端到端（真实 HTTP + 假解析流）走通：编排 2 条 → 刷新仍在 → 再编排 1 条追加到底部且时间接在 16:00（旧 14:00/15:00 未变）→ 删除中间一条后另一条**没有补位** → 全部入队后行从草稿消失、生成 2 条带 `sourceDraftId` 的任务、确认弹窗正常关闭。
+
 ## 2026-10-27 · 临近发布二次确认 + 登录页改版
 
 **单张发布页**（`public/js/pages/release.js`，新增 `public/js/near-time.js`）

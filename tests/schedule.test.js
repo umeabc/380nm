@@ -183,6 +183,44 @@ describe('BatchSchedule.plan', () => {
     assert.strictEqual(result.slots[0].hour, 14);
   });
 
+  it('after 在窗口内生效：仅选择严格晚于下界的整点', () => {
+    const result = plan({
+      N: 2,
+      date: '2026-10-12',
+      start: '10:00',
+      end: '15:00',
+      avoid: [],
+      prefix: '优香',
+      after: new Date(2026, 9, 12, 12, 30, 0, 0).getTime()
+    });
+    assert.strictEqual(JSON.stringify(result.slots.map(s => s.hour)), JSON.stringify([13, 14]));
+  });
+
+  it('after 超出窗口：过滤后容量不足并报错', () => {
+    assert.throws(() => plan({
+      N: 1,
+      date: '2026-10-12',
+      start: '10:00',
+      end: '15:00',
+      avoid: [],
+      prefix: '优香',
+      after: new Date(2026, 9, 12, 15, 0, 0, 0).getTime()
+    }), /时间窗过滤后仅 0 个整点，少于 1 条/);
+  });
+
+  it('after 缺省时行为不变', () => {
+    const cfg = {
+      N: 2,
+      date: '2026-10-12',
+      start: '10:00',
+      end: '15:00',
+      avoid: [],
+      prefix: '优香'
+    };
+    assert.deepStrictEqual(plan(cfg), plan({ ...cfg, after: undefined }));
+    assert.strictEqual(JSON.stringify(plan(cfg).slots.map(s => s.hour)), JSON.stringify([10, 11]));
+  });
+
   it('平局保留最早：窗口10-15, N=3, 避让12/14 → 10-12（命中12）vs 11-13（命中12）vs 13-15（命中14）→ 10-12', () => {
     const result = plan({
       N: 3,

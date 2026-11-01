@@ -18,7 +18,7 @@ class Store {
     this.file = file;
     this.data = {
       users: [], sessions: {}, folders: [], settings: {},
-      accounts: [], templates: [], jobs: [], logs: [], images: [], libAccounts: []
+      accounts: [], templates: [], jobs: [], logs: [], images: [], libAccounts: [], batchDrafts: []
     };
     this._saveTimer = null;
   }
@@ -41,6 +41,7 @@ class Store {
     if (!Array.isArray(this.data.logs)) this.data.logs = [];
     if (!Array.isArray(this.data.images)) this.data.images = [];
     if (!Array.isArray(this.data.libAccounts)) this.data.libAccounts = [];
+    if (!Array.isArray(this.data.batchDrafts)) this.data.batchDrafts = [];
     // 账号库已移除「角色」分类：老数据丢弃 role 字段，并补默认在岗状态
     for (const a of this.data.libAccounts) {
       if ('role' in a) delete a.role;
@@ -397,6 +398,28 @@ class Store {
   async deleteImage(key) {
     this.data.images = this.data.images.filter((i) => i.key !== key);
     this.save();
+  }
+
+  // ---------------- batch drafts ----------------
+  getBatchDraft(userId) {
+    return this.data.batchDrafts.find((d) => d.userId === userId);
+  }
+  async saveBatchDraft(userId, rows, config) {
+    const idx = this.data.batchDrafts.findIndex((d) => d.userId === userId);
+    const doc = {
+      userId,
+      revision: idx >= 0 ? (this.data.batchDrafts[idx].revision || 0) + 1 : 1,
+      rows,
+      config,
+      updatedAt: new Date().toISOString()
+    };
+    if (idx >= 0) {
+      this.data.batchDrafts[idx] = doc;
+    } else {
+      this.data.batchDrafts.push(doc);
+    }
+    this.save();
+    return doc;
   }
 }
 

@@ -1147,7 +1147,7 @@ module.exports = function createRoutes(ctx) {
 
   async function createJobFromInput(user, body, { deferred = false, batch = false } = {}) {
     const { templateId, accountId, variables = {}, images = [], scheduledAt } = body || {};
-    
+
     const template = store.getTemplate(templateId);
     if (!template || template.userId !== user.id) {
       throw jobInputError('模板不存在');
@@ -1159,7 +1159,7 @@ module.exports = function createRoutes(ctx) {
 
     const text = renderTemplate(template.content, variables).trim();
     if (!text) throw jobInputError('动态内容为空，请填写模板变量');
-    
+
     const limit = Math.max(0, Math.min(MAX_IMAGES, template.maxImages || MAX_IMAGES));
     if (images.length > limit) {
       throw jobInputError(`图片数量超出限制（模板最多 ${limit} 张）`);
@@ -1296,6 +1296,152 @@ module.exports = function createRoutes(ctx) {
     } catch (e) {
       next(e);
     }
+  });
+
+  // ===================== 批量草稿 =====================
+  const MAX_DRAFT_ROWS = 50;
+  const MAX_STR_LEN = { title: 20, url: 500, credit: 2000, body: 2000, varValue: 2000 };
+  const DRAFT_VALID_STATUS = ['ready', 'parsing', 'parse_failed', 'enqueue_failed'];
+
+  function validateDraftRow(req, row) {
+    if (!row || typeof row !== 'object') return '行格式不正确';
+    if (!row.id || typeof row.id !== 'string' || !row.id.trim()) return '行 id 不能为空';
+    if (!DRAFT_VALID_STATUS.includes(row.status)) return `行 status 不合法: ${row.status}`;
+    if (row.scheduledAt && (typeof row.scheduledAt !== 'string' || isNaN(new Date(row.scheduledAt).getTime()))) return `行 scheduledAt 格式不正确`;
+    if (row.url && (typeof row.url !== 'string' || row.url.length > MAX_STR_LEN.url)) return `行 url 长度超限`;
+    if (row.title && (typeof row.title !== 'string' || row.title.length > MAX_STR_LEN.title)) return `行 title 长度超限`;
+    if (row.credit && (typeof row.credit !== 'string' || row.credit.length > MAX_STR_LEN.credit)) return `行 credit 长度超限`;
+    if (row.body && (typeof row.body !== 'string' || row.body.length > MAX_STR_LEN.body)) return `行 body 长度超限`;
+    if (!Array.isArray(row.images)) return '行 images 必须是数组';
+    if (row.images.length > MAX_IMAGES) return '行 images 数量超限';
+    for (const key of row.images) {
+      if (typeof key !== 'string') return 'images 必须是字符串数组';
+      const img = store.listImages().find(i => i.key === key);
+      if (!img || img.userId !== req.user.id) return '行包含不属于当前用户的图片';
+    }
+    if (!Array.isArray(row.selectedImages)) return '行 selectedImages 必须是数组';
+    for (const key of row.selectedImages) {
+      if (!row.images.includes(key)) return 'selectedImages 必须是 images 的子集';
+    }
+    if (row.config) {
+      const { accountId, templateId } = row.config;
+      if (accountId) {
+        const acc = store.getAccount(accountId);
+        if (!acc || acc.userId !== req.user.id) return 'config.accountId 不属于当前用户';
+      }
+      if (templateId) {
+        const tpl = store.getTemplate(templateId);
+        if (!tpl || tpl.userId !== req.user.id) return 'config.templateId 不属于当前用户';
+      }
+    }
+    if (row.variables && typeof row.variables === 'object') {
+      for (const val of Object.values(row.variables)) {
+        if (typeof val === 'string' && val.length > MAX_STR_LEN.varValue) return 'variables 值长度超限';
+      }
+    }
+    return null;
+  }
+
+  function sanitizeDraftRow(row) {
+    return {
+      id: row.id, url: row.url || '', status: row.status, config: row.config || {},
+      scheduledAt: row.scheduledAt || '', title: row.title || '',
+      manualTitle: Boolean(row.manualTitle), manualTime: row.manualTime || null,
+      images: row.images || [], selectedImages: row.selectedImages || [],
+      credit: row.credit || '', body: row.body || '', variables: row.variables || {},
+      topic: row.topic || null, error: row.error || '', createdAt: row.createdAt || new Date().toISOString()
+    };
+  }
+
+  router.get('/batch-draft', requireAuth, (req, res) => {
+    const draft = store.getBatchDraft(req.user.id);
+    if (!draft) return res.json({ revision: 0, rows: [], config: {} });
+    res.json({ revision: draft.revision, rows: draft.rows, config: draft.config });
+  });
+
+  router.put('/batch-draft', requireAuth, async (req, res, next) => {
+    try {
+      const current = store.getBatchDraft(req.user.id);
+      const expectedRev = req.body && typeof req.body.revision === 'number' ? req.body.revision : -1;
+      if (current && current.revision !== expectedRev) {
+        return res.status(409).json({ error: '草稿已在别处更新', revision: current.revision });
+      }
+      const { rows, config } = req.body || {};
+      if (!Array.isArray(rows)) return res.status(400).json({ error: 'rows 必须是数组' });
+      if (rows.length > MAX_DRAFT_ROWS) return res.status(400).json({ error: `最多保存 ${MAX_DRAFT_ROWS} 行` });
+      const ids = new Set();
+      for (const row of rows) {
+        const err = validateDraftRow(req, row);
+        if (err) return res.status(400).json({ error: err });
+        if (ids.has(row.id)) return res.status(400).json({ error: `行 id 重复: ${row.id}` });
+        ids.add(row.id);
+      }
+      const sanitized = rows.map(sanitizeDraftRow);
+      const saved = await store.saveBatchDraft(req.user.id, sanitized, config || {});
+      res.json({ revision: saved.revision, rows: saved.rows, config: saved.config });
+    } catch (e) { next(e); }
+  });
+
+  router.post('/batch-draft/enqueue', requireAuth, async (req, res, next) => {
+    try {
+      const { revision: expectedRev, rowIds } = req.body || {};
+      if (!Array.isArray(rowIds) || !rowIds.length) return res.status(400).json({ error: '未选择要入队的行' });
+      const draft = store.getBatchDraft(req.user.id);
+      if (!draft) return res.status(404).json({ error: '草稿不存在' });
+      if (typeof expectedRev === 'number' && draft.revision !== expectedRev) {
+        return res.status(409).json({ error: '草稿已在别处更新', revision: draft.revision });
+      }
+      const rowMap = new Map(draft.rows.map(r => [r.id, r]));
+      const created = [];
+      const failed = [];
+      const existingJobs = store.listJobs().filter(j => j.userId === req.user.id && j.sourceDraftId);
+      const sourceDraftIds = new Set(existingJobs.map(j => j.sourceDraftId));
+      for (const rowId of rowIds) {
+        const row = rowMap.get(rowId);
+        if (!row) { failed.push({ rowId, error: '行不存在' }); continue; }
+        if (row.status !== 'ready' && row.status !== 'enqueue_failed') {
+          failed.push({ rowId, error: '该行尚未就绪' });
+          continue;
+        }
+        if (!row.scheduledAt || !Number.isFinite(new Date(row.scheduledAt).getTime())) {
+          failed.push({ rowId, error: '该行没有有效的计划时间' });
+          continue;
+        }
+        if (sourceDraftIds.has(row.id)) {
+          const existingJob = existingJobs.find(j => j.sourceDraftId === row.id);
+          created.push({ rowId, id: existingJob.id });
+          continue;
+        }
+        try {
+          const cfg = row.config || {};
+          const tpl = store.getTemplate(cfg.templateId);
+          const acc = store.getAccount(cfg.accountId);
+          if (!tpl || tpl.userId !== req.user.id) { failed.push({ rowId, error: '模板不存在' }); continue; }
+          if (!acc || acc.userId !== req.user.id) { failed.push({ rowId, error: '账号不存在' }); continue; }
+          const mainVar = (tpl.variables || []).find(v => v.type === 'textarea');
+          if (!mainVar) { failed.push({ rowId, error: '模板无可写入正文的变量' }); continue; }
+          const images = row.selectedImages.map(key => {
+            const img = store.listImages().find(i => i.key === key);
+            return { key, name: img?.name || '', url: img?.url || '' };
+          });
+          const jobInput = {
+            templateId: cfg.templateId, accountId: cfg.accountId,
+            variables: { ...row.variables, [mainVar.key]: row.body || row.credit },
+            images, title: row.title, topic: row.topic, mentions: [], type: '原创', scheduledAt: row.scheduledAt
+          };
+          const job = await createJobFromInput(req.user, jobInput, { deferred: true, batch: true });
+          job.sourceDraftId = row.id;
+          created.push({ rowId, id: job.id });
+        } catch (e) {
+          failed.push({ rowId, error: e.message || '创建任务失败' });
+        }
+      }
+      const successIds = new Set(created.map(c => c.rowId));
+      const remainingRows = draft.rows.filter(r => !successIds.has(r.id));
+      const updated = await store.saveBatchDraft(req.user.id, remainingRows, draft.config);
+      await store.flushNow();
+      res.json({ revision: updated.revision, rows: updated.rows, created, failed });
+    } catch (e) { next(e); }
   });
 
   router.put('/jobs/:id', requireAuth, async (req, res, next) => {
