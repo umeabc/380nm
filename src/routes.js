@@ -1251,6 +1251,118 @@ module.exports = function createRoutes(ctx) {
     return job;
   }
 
+  // ===================== 草稿（始终仅本人，不提供管理员越权） =====================
+  function draftInput(user, body, previous) {
+    const input = { ...(previous || {}) };
+    for (const key of ['templateId', 'variables', 'images', 'topic', 'title', 'type', 'slots']) {
+      if (Object.hasOwn(body, key)) input[key] = body[key];
+    }
+    const template = store.getTemplate(input.templateId);
+    if (!template || template.userId !== user.id) throw jobInputError('模板不存在');
+    const variables = input.variables === undefined ? {} : input.variables;
+    if (!variables || typeof variables !== 'object' || Array.isArray(variables)) throw jobInputError('模板变量格式不正确');
+    const images = input.images === undefined ? [] : input.images;
+    if (!Array.isArray(images)) throw jobInputError('配图必须是数组');
+    const limit = Math.max(0, Math.min(MAX_IMAGES, template.maxImages == null ? MAX_IMAGES : template.maxImages));
+    if (images.length > limit) throw jobInputError(`图片数量超出限制（模板最多 ${limit} 张）`);
+    const ownedImages = images.map((i) => {
+      const img = i && store.listImages().find((x) => x.key === i.key);
+      if (!img || img.userId !== user.id) throw jobInputError('包含不属于当前用户的图片');
+      return { key: img.key, name: img.name || '', url: img.url || '' };
+    });
+    const text = !previous || Object.hasOwn(body, 'variables')
+      ? renderTemplate(template.content, variables).trim() : previous.text;
+    if (!text || !text.trim()) throw jobInputError('动态内容为空，请填写模板变量');
+    const title = String(input.title || '').trim();
+    if (title.length > 20) throw jobInputError('动态标题最多 20 个字');
+    return {
+      templateId: template.id, templateName: template.name, variables,
+      text, images: ownedImages, topic: input.topic || null, title,
+      type: TASK_TYPES.includes(input.type) ? input.type : '原创',
+      slots: input.slots && typeof input.slots === 'object' && !Array.isArray(input.slots) ? input.slots : {},
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  function ownDraft(req, res) {
+    const draft = store.getDraft(req.params.id);
+    if (!draft || draft.userId !== req.user.id) {
+      res.status(404).json({ error: '草稿不存在' });
+      return null;
+    }
+    return draft;
+  }
+
+  router.get('/drafts', requireAuth, (req, res) => {
+    const drafts = store.listDrafts().filter((d) => d.userId === req.user.id)
+      .sort((a, b) => String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+    res.json({ drafts });
+  });
+  router.post('/drafts', requireAuth, async (req, res, next) => {
+    try {
+      const fields = draftInput(req.user, req.body || {});
+      const draft = await store.addDraft({ id: genId('draft'), userId: req.user.id, ...fields, createdAt: fields.updatedAt });
+      res.json({ draft });
+    } catch (e) {
+      if (e.status) return res.status(e.status).json({ error: e.message });
+      next(e);
+    }
+  });
+  router.patch('/drafts/:id', requireAuth, async (req, res, next) => {
+    const original = ownDraft(req, res);
+    if (!original) return;
+    try {
+      // 先在独立对象上完成全部校验，失败不改动原记录。
+      const patch = draftInput(req.user, req.body || {}, original);
+      res.json({ draft: await store.updateDraft(original.id, patch) });
+    } catch (e) {
+      if (e.status) return res.status(e.status).json({ error: e.message });
+      next(e);
+    }
+  });
+  router.delete('/drafts/:id', requireAuth, async (req, res, next) => {
+    const draft = ownDraft(req, res);
+    if (!draft) return;
+    try {
+      await store.deleteDraft(draft.id);
+      res.json({ ok: true });
+    } catch (e) { next(e); }
+  });
+  router.post('/drafts/:id/publish', requireAuth, async (req, res, next) => {
+    const draft = ownDraft(req, res);
+    if (!draft) return;
+    try {
+      const { accountId, scheduledAt } = req.body || {};
+      const account = store.getAccount(accountId);
+      if (!account || account.userId !== req.user.id) throw jobInputError('请选择要发布的B站账号');
+      let when = scheduledAt ? new Date(scheduledAt) : new Date();
+      if (!Number.isFinite(when.getTime())) throw jobInputError('计划时间格式不正确');
+      if (when.getTime() < Date.now()) when = new Date();
+      if (!draft.text || !draft.text.trim()) throw jobInputError('正文不能为空');
+      const slotsR = resolveSlots(draft, draft.type, req.user.id);
+      if (slotsR.error) throw jobInputError(slotsR.error);
+      const topic = await resolveTopic(req.user, account, draft.topic);
+      const now = new Date().toISOString();
+      const job = {
+        id: genId('job'), userId: req.user.id,
+        templateId: draft.templateId, templateName: draft.templateName,
+        accountId: account.id, accountName: account.uname || account.name,
+        text: draft.text, images: draft.images, topic, title: draft.title,
+        type: draft.type, slots: slotsR.slots,
+        mentions: mergeLibraryMentions(draft.text, store.listLibAccounts(), draft.mentions || [], req.user.id),
+        scheduledAt: when.toISOString(), status: 'pending', attempts: 0,
+        lastError: null, publishedAt: null, dynamicId: '', dynamicUrl: '',
+        createdAt: now, updatedAt: now
+      };
+      await store.addJob(job);
+      await store.deleteDraft(draft.id);
+      res.json({ job });
+    } catch (e) {
+      if (e.status) return res.status(e.status).json({ error: e.message });
+      next(e);
+    }
+  });
+
   // 静默更新近期话题（批量用，不触发 save）
   function pushRecentTopicSilent(userId, topic) {
     if (!topic || !topic.id || !topic.name) return;
@@ -1762,13 +1874,18 @@ module.exports = function createRoutes(ctx) {
   // 导入用：只看指定用户的账号/模板
   const listMy = (list, uid) => list.filter((x) => x.userId === uid);
 
-  // POST /api/jobs/import：导入 zip（queue.csv + images/）
-  router.post('/jobs/import', requireAuth, (req, res) => {
+  // 两种导入共用整个 ZIP 安全预检、CSV 解析、文件夹和图片入库流程。
+  // 草稿仅跳过账号/计划时间校验，正文均使用 CSV 原文。
+  function importQueue(req, res, asDraft = false) {
     if (importLocks.has(req.user.id)) {
       return res.status(409).json({ error: '已有导入正在进行，请稍后再试' });
     }
     importLocks.add(req.user.id);
-    zipUpload.single('file')(req, res, () => {
+    zipUpload.single('file')(req, res, (uploadError) => {
+      if (uploadError) {
+        importLocks.delete(req.user.id);
+        return res.status(400).json({ error: 'zip 上传失败，请检查文件大小和格式' });
+      }
       (async () => {
         const created = [], skipped = [], failed = [];
         const folderName = `导入 ${new Date().toLocaleString('zh-CN', {
@@ -1862,6 +1979,9 @@ module.exports = function createRoutes(ctx) {
               failed.push({ row: r.row, reason });
               let chain = Promise.resolve();
               for (const k of rowNewKeys) {
+                for (const [name, meta] of zipStored) {
+                  if (meta.key === k) { zipStored.delete(name); libNames.delete(meta.name.toLowerCase()); }
+                }
                 chain = chain
                   .then(() => storage.delete(k)).catch(() => {})
                   .then(() => store.deleteImage(k));
@@ -1876,14 +1996,14 @@ module.exports = function createRoutes(ctx) {
               else if (!r.text.trim()) { await rowFail('正文不能为空'); }
               else if (!CSV_TYPE_SET.has(r.type)) { await rowFail(`类型必须为 原创/翻嵌/翻译/转载（当前: ${r.type || '空'}）`); }
               // 计划时间：过去时间 → 该行失败
-              else if (!resolveCsvTime(r.scheduledAt)) { await rowFail('计划时间格式不正确（接受 iso:<带偏移> 或 YYYY-MM-DD HH:mm）'); }
-              else if (resolveCsvTime(r.scheduledAt).getTime() <= Date.now()) { await rowFail('计划时间是过去时间'); }
+              else if (!asDraft && !resolveCsvTime(r.scheduledAt)) { await rowFail('计划时间格式不正确（接受 iso:<带偏移> 或 YYYY-MM-DD HH:mm）'); }
+              else if (!asDraft && resolveCsvTime(r.scheduledAt).getTime() <= Date.now()) { await rowFail('计划时间是过去时间'); }
               else {
                 const when = resolveCsvTime(r.scheduledAt);
-                const accM = matchByName(listMy(store.listAccounts(), req.user.id), r.accountName, '账号');
+                const accM = asDraft ? { hit: null } : matchByName(listMy(store.listAccounts(), req.user.id), r.accountName, '账号');
                 const tplM = matchByName(listMy(store.listTemplates(), req.user.id), r.templateName, '模板');
                 const account = accM.hit, template = tplM.hit;
-                if (!account) { await rowFail(accM.error || '账号匹配失败'); continue; }
+                if (!asDraft && !account) { await rowFail(accM.error || '账号匹配失败'); continue; }
                 if (!template) { await rowFail(tplM.error || '模板匹配失败'); continue; }
                 // 配图 JSON 数组（保序）
                 let imgs;
@@ -1930,21 +2050,20 @@ module.exports = function createRoutes(ctx) {
                         contentType: contentTypeForMagic(kind),
                         createdAt: new Date().toISOString()
                       };
+                      rowNewKeys.push(key);
                       await store.addImage(meta);
                       zipStored.set(ent.name, meta);
-                      rowNewKeys.push(key);
                     }
                     jobImages.push({ key: meta.key, name: meta.name, url: meta.url });
                   }
                   if (!rowFailed) {
                     // 任务直接落库：正文用 CSV 原文，不用模板重渲染
                     const job = {
-                      id: genId('job'),
+                      id: genId(asDraft ? 'draft' : 'job'),
                       userId: req.user.id,
                       templateId: template.id,
                       templateName: template.name,
-                      accountId: account.id,
-                      accountName: account.uname || account.name,
+                      ...(!asDraft ? { accountId: account.id, accountName: account.uname || account.name } : { variables: {} }),
                       text: r.text,
                       images: jobImages,
                       topic,
@@ -1952,17 +2071,15 @@ module.exports = function createRoutes(ctx) {
                       mentions,
                       type: r.type,
                       slots: {},
-                      scheduledAt: when.toISOString(),
-                      status: 'pending',
-                      attempts: 0,
-                      lastError: null,
-                      publishedAt: null,
-                      dynamicId: '',
-                      dynamicUrl: '',
+                      ...(!asDraft ? {
+                        scheduledAt: when.toISOString(), status: 'pending', attempts: 0,
+                        lastError: null, publishedAt: null, dynamicId: '', dynamicUrl: ''
+                      } : {}),
                       createdAt: new Date().toISOString(),
                       updatedAt: new Date().toISOString()
                     };
-                    store.addJobSilent(job);
+                    if (asDraft) await store.addDraft(job);
+                    else store.addJobSilent(job);
                     created.push({ row: r.row, id: job.id });
                   }
                 }
@@ -1989,8 +2106,9 @@ module.exports = function createRoutes(ctx) {
         if (!res.headersSent) res.status(500).json({ error: '导入失败，请稍后重试' });
       });
     });
-  });
-
+  }
+  router.post('/jobs/import', requireAuth, (req, res) => importQueue(req, res));
+  router.post('/drafts/import', requireAuth, (req, res) => importQueue(req, res, true));
 
   router.get('/logs', requireAuth, (req, res) => {
     const limit = Math.min(500, Number(req.query.limit) || 100);

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>草稿区 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css?v=34">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page tile-page drafts-page" id="page">
+    <div class="tile-stack">
+      <section class="tile">
+        <div class="queue-selectbar" id="selectbar">
+          <div class="sb-left"><span class="sb-info" id="sbInfo" aria-live="polite">已选 0 条</span></div>
+          <div class="sb-right">
+            <div class="sb-bulk-group" role="group" aria-label="选择操作">
+              <button class="sb-bulk-btn" type="button" data-bulk="all">全选</button>
+              <button class="sb-bulk-btn" type="button" data-bulk="clear">清空</button>
+            </div>
+            <div class="sb-op-group">
+              <button class="btn sm" type="button" id="importBtn">导入 ZIP</button>
+              <a class="link-btn sb-tpl-link" href="/api/jobs/import-template">下载模板</a>
+            </div>
+            <button class="btn sm" type="button" id="deleteSelected" disabled>删除所选</button>
+            <input type="file" id="importFile" accept=".zip" hidden>
+          </div>
+        </div>
+        <div class="import-panel" id="importPanel" hidden aria-live="polite"></div>
+      </section>
+      <div class="tile-stack" id="list" aria-live="polite"><div class="draft-empty tile">正在加载草稿…</div></div>
+    </div>
+  </main>
+</div>
+<div class="publish-mask" id="publishMask" hidden>
+  <form class="publish-box" id="publishForm" role="dialog" aria-modal="true" aria-labelledby="publishTitle" tabindex="-1">
+    <h2 id="publishTitle">发布草稿</h2>
+    <p class="foot-hint" id="publishDraftTitle"></p>
+    <div class="field"><label for="publishAccount">发布账号</label><select class="ctl" id="publishAccount" required></select></div>
+    <div class="field"><label for="publishTime">计划时间</label><input class="ctl" id="publishTime" type="datetime-local" step="60"><div class="foot-hint">清空时间即为立即发布</div></div>
+    <div class="draft-actions"><button class="btn" type="button" id="publishCancel">取消</button><button class="btn primary" type="submit" id="publishConfirm">确认发布</button></div>
+  </form>
+</div>
+<div id="toast-wrap"></div>
+<script src="/js/common.js?v=34"></script>
+<script src="/js/pages/drafts.js?v=34"></script>
+</body>
+</html>

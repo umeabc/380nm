@@ -30,7 +30,7 @@
   const state = {
     accounts: [], templates: [], images: [], folders: [], jobs: [], recentTopics: [], libAccounts: [],
     selected: [], pickFolder: 'all', pickPage: 1,
-    topic: null, atMentions: [],
+    topic: null, atMentions: [], type: '原创',
     people: { translator: null, typesetter: null },
     varsByTpl: {}, vars: {},
     lastVarEl: null,
@@ -79,6 +79,7 @@
       const key = sel.dataset.person;
       const p = pool.find((a) => a.id === sel.value) || null;
       state.people[key] = p ? { id: p.id, name: p.name, handle: p.handle, uid: p.uid || '' } : null;
+      state.vars[key] = p ? '@' + p.handle : '';
       const row = sel.closest('[data-slotrow]');
       if (row) row.classList.remove('err');
       renderSubmit();
@@ -144,7 +145,7 @@
     // 人员槽位并入变量：{{translator}} / {{typesetter}} 取所选成员的 @handle
     for (const s of PERSON_SLOTS) {
       const p = state.people[s.key];
-      vars[s.key] = p ? '@' + p.handle : '';
+      vars[s.key] = p ? '@' + p.handle : (state.vars[s.key] || '');
     }
     return vars;
   }
@@ -713,6 +714,84 @@
     };
   }
 
+  /* 草稿仅校验内容；不依赖发布账号、计划时间或人员槽位必填。 */
+  let editingDraftId = new URLSearchParams(location.search).get('draft');
+  let draftReady = !editingDraftId;
+  function collectDraftPayload() {
+    const tpl = currentTemplate();
+    const title = $('#dyn-title').value.trim();
+    if (!tpl) { toast('请选择动态模板', 'err'); flash('#sel-template'); return null; }
+    const variables = collectVariables();
+    if (!renderText(tpl.content || '', variables).trim()) { toast('草稿正文不能为空', 'err'); flash('#var-fields'); return null; }
+    if (state.selected.length > (tpl.maxImages || 0)) { toast(`配图超过当前模板上限 ${tpl.maxImages || 0} 张`, 'err'); return null; }
+    if (title.length > 20) { toast('动态标题超过 20 字，请精简', 'err'); flash('#dyn-title'); return null; }
+    return { templateId: tpl.id, variables, images: state.selected, topic: state.topic, title, type: '原创', slots: {} };
+  }
+  async function saveDraft() {
+    const btn = $('#btn-save-draft');
+    if (btn.disabled || !draftReady) return;
+    const payload = collectDraftPayload();
+    if (!payload) return;
+    btn.disabled = true;
+    try {
+      await api(editingDraftId ? 'PATCH' : 'POST', '/api/drafts' + (editingDraftId ? '/' + encodeURIComponent(editingDraftId) : ''), payload);
+      toast(editingDraftId ? '草稿已更新' : '已保存到草稿，可继续编辑', 'ok');
+    } catch (error) { toast(error.message, 'err'); }
+    finally { btn.disabled = false; }
+  }
+  async function restoreDraft() {
+    if (!editingDraftId) return;
+    const btn = $('#btn-save-draft');
+    btn.textContent = '更新草稿';
+    btn.disabled = true;
+    try {
+      const result = await api('GET', '/api/drafts');
+      const draft = (result.drafts || []).find((item) => item.id === editingDraftId);
+      if (!draft) throw new Error('草稿不存在或已被删除，请返回草稿区');
+      if (!state.templates.some((tpl) => tpl.id === draft.templateId)) throw new Error('草稿所用模板已不可用，无法回填；请先恢复模板');
+      activeTplId = draft.templateId;
+      $('#sel-template').value = activeTplId;
+      state.varsByTpl[activeTplId] = { ...(draft.variables || {}) };
+      state.vars = state.varsByTpl[activeTplId];
+      // ZIP 导入的草稿只有渲染后的正文、没有变量快照：把正文回填到主文本框，否则打开就是空的
+      const mainVar = (state.templates.find((tpl) => tpl.id === activeTplId)?.variables || []).find((v) => v.type === 'textarea');
+      if (mainVar && !String(state.vars[mainVar.key] || '').trim() && draft.text) {
+        state.vars[mainVar.key] = draft.text;
+      }
+      for (const slot of PERSON_SLOTS) {
+        const handle = String(state.vars[slot.key] || '').replace(/^@/, '');
+        const person = state.libAccounts.find((item) => item.handle === handle);
+        state.people[slot.key] = person ? { id: person.id, name: person.name, handle: person.handle, uid: person.uid || '' } : null;
+      }
+      state.topic = draft.topic || null;
+      state.type = draft.type || '原创';
+      $('#dyn-title').value = draft.title || '';
+      const counter = $('#titleCounter');
+      counter.textContent = $('#dyn-title').value.length + ' / 20 字';
+      counter.classList.toggle('bad', $('#dyn-title').value.length > 20);
+      // 先渲染模板，再回填图片；不让模板切换逻辑静默截断已有草稿配图。
+      state.selected = [];
+      onTemplateChange(false);
+      state.selected = (draft.images || []).map((image) => {
+        const libraryImage = state.images.find((item) => item.key === image.key);
+        const source = libraryImage || image;
+        return { key: source.key, name: source.name, url: source.url };
+      });
+      renderPeople();
+      renderTopicChips();
+      renderSelected();
+      renderImageGrid();
+      renderSubmit();
+      draftReady = true;
+      btn.disabled = false;
+      if (state.type !== '原创') toast(`已载入「${state.type}」草稿；本页保存按原创类型，保留原类型请从草稿区直接发布`, 'warn', 6000);
+      else toast('已载入草稿，修改后可更新草稿', 'ok');
+    } catch (error) {
+      // 回填失败禁止误覆盖原草稿；用户仍可手动填写并提交新发布任务。
+      toast(error.message, 'err', 5000);
+    }
+  }
+
   /* POST payload，成功后 reset + toast */
   async function postJob(payload) {
     const r = await api('POST', '/api/jobs', payload);
@@ -1019,6 +1098,8 @@
       });
 
       $('#btn-submit').addEventListener('click', submitJob);
+      $('#btn-save-draft').addEventListener('click', saveDraft);
+      await restoreDraft();
 
       // 从 Danbooru 图源页跳转而来：导入原图 + 自动勾选 + 填作者说明
       importDanbooruPick();

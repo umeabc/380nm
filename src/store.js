@@ -18,7 +18,7 @@ class Store {
     this.file = file;
     this.data = {
       users: [], sessions: {}, folders: [], settings: {},
-      accounts: [], templates: [], jobs: [], logs: [], images: [], libAccounts: [], batchDrafts: []
+      accounts: [], templates: [], jobs: [], logs: [], images: [], libAccounts: [], batchDrafts: [], drafts: []
     };
     this._saveTimer = null;
   }
@@ -42,6 +42,7 @@ class Store {
     if (!Array.isArray(this.data.images)) this.data.images = [];
     if (!Array.isArray(this.data.libAccounts)) this.data.libAccounts = [];
     if (!Array.isArray(this.data.batchDrafts)) this.data.batchDrafts = [];
+    if (!Array.isArray(this.data.drafts)) this.data.drafts = [];
     // 账号库已移除「角色」分类：老数据丢弃 role 字段，并补默认在岗状态
     for (const a of this.data.libAccounts) {
       if ('role' in a) delete a.role;
@@ -179,6 +180,7 @@ class Store {
     this.data.accounts = this.data.accounts.filter((x) => x.userId !== id);
     this.data.templates = this.data.templates.filter((x) => x.userId !== id);
     this.data.jobs = this.data.jobs.filter((x) => x.userId !== id);
+    this.data.drafts = this.data.drafts.filter((x) => x.userId !== id);
     this.data.images = this.data.images.filter((x) => x.userId !== id);
     this.data.logs = this.data.logs.filter((x) => x.userId !== id);
     this.save();
@@ -327,6 +329,30 @@ class Store {
   }
   async deleteTemplate(id) {
     this.data.templates = this.data.templates.filter((t) => t.id !== id);
+    this.save();
+  }
+
+  // ---------------- drafts ----------------
+  listDrafts() {
+    return this.data.drafts;
+  }
+  getDraft(id) {
+    return this.data.drafts.find((d) => d.id === id);
+  }
+  async addDraft(draft) {
+    this.data.drafts.push(draft);
+    this.save();
+    return draft;
+  }
+  async updateDraft(id, patch) {
+    const draft = this.getDraft(id);
+    if (!draft) return null;
+    Object.assign(draft, patch, { updatedAt: new Date().toISOString() });
+    this.save();
+    return draft;
+  }
+  async deleteDraft(id) {
+    this.data.drafts = this.data.drafts.filter((d) => d.id !== id);
     this.save();
   }
 

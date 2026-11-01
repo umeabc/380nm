@@ -1128,3 +1128,34 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
   .queue-selectbar .sb-right{width:100%;justify-content:flex-start}
 }
 @media(prefers-reduced-motion:reduce){.queue-selectbar #exportBtn.loading{transition:none}}
+
+/* 25. 草稿区：沿用队列工具条与卡片节奏，仅新增专用样式。 */
+.draft-card{display:grid;grid-template-columns:26px minmax(0,1fr) auto;align-items:start;gap:14px;padding:16px;border:1px solid var(--border);border-radius:var(--r-lg);font-size:12.5px}
+.draft-card .task-select{margin-top:3px}
+.draft-card .draft-actions{align-self:start;margin-top:-2px}
+.draft-card.is-selected{background:#F5F7FF;box-shadow:inset 3px 0 0 var(--primary)}
+.draft-content{flex:1;min-width:0}
+.draft-hd{display:flex;align-items:center;gap:8px;min-width:0;margin-bottom:6px}
+.draft-title{margin:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.draft-body{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text-2);line-height:1.7}
+.draft-thumbs{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.draft-thumb{position:relative;width:56px;height:56px;overflow:hidden;border:1px solid var(--border);border-radius:7px}
+.draft-thumb img{display:block;width:100%;height:100%;object-fit:cover}
+.draft-thumb span{position:absolute;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:600}
+.draft-meta{margin-top:9px;color:var(--text-3);font-size:12px;overflow-wrap:anywhere}
+.draft-actions{display:flex;align-items:center;justify-content:flex-end;gap:7px;flex-wrap:wrap;flex-shrink:0}
+.draft-empty{padding:40px 24px;text-align:center;color:var(--text-3);font-size:12.5px;line-height:1.8}
+.publish-mask{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:20px}
+.publish-mask[hidden]{display:none}
+.publish-box{width:min(100%,440px);max-height:calc(100dvh - 40px);overflow-y:auto;box-sizing:border-box;padding:22px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:0 20px 60px rgba(0,0,0,.25);font-size:12.5px}
+.publish-box h2{font-size:16px;margin:0 0 10px}
+.publish-box .field{margin:16px 0}
+.publish-box .foot-hint{overflow-wrap:anywhere}
+.publish-box:focus{outline:none}
+.publish-box :focus-visible{outline:2px solid var(--primary);outline-offset:3px}
+@media(max-width:760px){
+  .draft-card{display:grid;grid-template-columns:26px minmax(0,1fr);gap:10px;padding:13px}
+  .draft-card .task-select{grid-column:1;grid-row:1;align-self:start;padding-top:4px}
+  .draft-card .draft-content{grid-column:2;grid-row:1}
+  .draft-card .draft-actions{grid-column:2;justify-content:flex-start}
+}

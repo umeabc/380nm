@@ -38,6 +38,7 @@ async function main() {
   app.get('/release', page('release'));
   app.get('/batch', page('batch'));
   app.get('/queue', page('queue'));
+  app.get('/drafts', page('drafts'));
   app.get('/queue/:id', page('job'));
   app.get('/library', page('library'));
   app.get('/danbooru', page('danbooru'));
