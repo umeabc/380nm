@@ -168,7 +168,7 @@
         <input type="checkbox" data-select="${j.id}" aria-label="选中任务 ${esc(j.title || j.accountName || j.id)}"${chk}>
       </label>
       ${timeCell}
-      <div>
+      <div class="t-main">
         <div class="t-meta">${typeChip}${tplChip}<span class="t-target">${esc(j.accountName || '')}</span>${j.title ? `<span class="tag-sm">${esc(j.title)}</span>` : ''}</div>
         <div class="t-body">${bodyHTML(j)}</div>${thumbs}${err}
       </div>

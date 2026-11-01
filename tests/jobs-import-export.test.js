@@ -267,6 +267,7 @@ describe('POST /api/jobs/export 与 GET /api/jobs/import-template', () => {
     assert.match(res.body.error, /32000/);
   });
   it('返回 zip：queue.csv（BOM+示例+# 说明行）、images/ 占位、README.txt', async () => {
+    const generatedAt = Date.now();
     const res = await request('GET', '/api/jobs/import-template', null, cookies.test);
     assert.strictEqual(res.status, 200);
     assert.strictEqual(res.headers['content-type'], 'application/zip');
@@ -283,6 +284,15 @@ describe('POST /api/jobs/export 与 GET /api/jobs/import-template', () => {
     const rows = parseQueueCsv(text);
     assert.ok(rows.length >= 1);
     assert.ok(rows[0].skipped); // # 说明行
+    const sample = rows.find(row => !row.skipped);
+    assert.match(sample.scheduledAt, /^iso:\d{4}-\d{2}-\d{2}T10:00:00\+08:00$/);
+    assert.ok(Date.parse(sample.scheduledAt.slice(4)) > generatedAt);
+    const imported = await postImport(res.buf);
+    assert.strictEqual(imported.status, 200);
+    assert.strictEqual(imported.body.failed.length, 1);
+    assert.strictEqual(imported.body.failed[0].row, 8);
+    assert.match(imported.body.failed[0].reason, /未找到账号/);
+    assert.doesNotMatch(imported.body.failed[0].reason, /Cannot read properties|TypeError/);
   });
 
   function csvLines(rows) {
@@ -334,6 +344,105 @@ describe('POST /api/jobs/export 与 GET /api/jobs/import-template', () => {
     // 同 zip 内 a.png 只存一次
     const j2 = store.data.jobs.find(j => j.id === res.body.created[1].id);
     assert.strictEqual(j2.images[0].key, job.images[0].key);
+  });
+
+  it('zip 带 images/ 目录占位及任意层级目录条目 → 导入成功', async () => {
+    const zip = buildZip([
+      { name: 'queue.csv', buffer: Buffer.from(csvLines([rowCells({ __imgs: ['a.png'] })])) },
+      { name: 'images/', buffer: Buffer.alloc(0) },
+      { name: 'images/a/b/', buffer: Buffer.alloc(0) },
+      { name: '其他/空目录/', buffer: Buffer.alloc(0) },
+      { name: 'images/a.png', buffer: MIN_PNG }
+    ]);
+    const res = await postImport(zip);
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.created.length, 1);
+    assert.deepStrictEqual(res.body.failed, []);
+    assert.deepStrictEqual(res.body.skipped, []);
+  });
+
+  it('macOS 资源叉、隐藏文件及根 Windows 元数据 → 静默忽略', async () => {
+    const before = store.data.images.length;
+    const ignored = [
+      '__MACOSX/', '__MACOSX/images/', '__MACOSX/images/._a.png',
+      '__MACOSX/metadata.txt', '.DS_Store', 'images/.DS_Store',
+      'images/._a.png', '.hidden/nested.txt', 'images/.hidden/nested.txt',
+      'Thumbs.db', 'desktop.ini', 'THUMBS.DB', 'DESKTOP.INI'
+    ];
+    const zip = buildZip([
+      { name: 'queue.csv', buffer: Buffer.from(csvLines([rowCells()])) },
+      ...ignored.map(name => ({ name, buffer: name.endsWith('/') ? Buffer.alloc(0) : Buffer.from('metadata') }))
+    ]);
+    const res = await postImport(zip);
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(res.body.created.length, 1);
+    assert.deepStrictEqual(res.body.failed, []);
+    assert.deepStrictEqual(res.body.skipped, []);
+    assert.strictEqual(store.data.images.length, before);
+    assert.deepStrictEqual(Object.keys(res.body).sort(), ['created', 'failed', 'folderId', 'skipped']);
+  });
+
+  it('images/a/b.jpg 两层图片 → 400', async () => {
+    const zip = buildImportZip(csvLines([rowCells()]), { 'a/b.jpg': MIN_PNG });
+    const res = await postImport(zip);
+    assert.strictEqual(res.status, 400);
+    assert.match(res.body.error, /不允许的条目: images\/a\/b\.jpg/);
+  });
+
+  it('Windows 元数据仅忽略根目录，images/ 下仍做扩展名校验', async () => {
+    for (const name of ['Thumbs.db', 'desktop.ini']) {
+      const res = await postImport(buildImportZip(csvLines([rowCells()]), { [name]: Buffer.from('metadata') }));
+      assert.strictEqual(res.status, 400);
+      assert.match(res.body.error, /扩展名不在支持范围/);
+    }
+  });
+
+  it('大小写不同的两个根 queue.csv → 400', async () => {
+    const csv = Buffer.from(csvLines([rowCells()]));
+    const res = await postImport(buildZip([
+      { name: 'queue.csv', buffer: csv },
+      { name: 'QUEUE.CSV', buffer: csv },
+      { name: 'images/', buffer: Buffer.alloc(0) }
+    ]));
+    assert.strictEqual(res.status, 400);
+    assert.match(res.body.error, /必须有且仅有一个 queue\.csv/);
+  });
+
+  it('模板匹配失败及缺失图片均只返回一条明确失败原因', async () => {
+    for (const [over, reason] of [
+      [{ templateName: '不存在的模板' }, /未找到模板/],
+      [{ __imgs: ['示例图片.jpg'] }, /配图 示例图片\.jpg 不在 images\/ 目录中/],
+      [{ topic: { name: '话题' }, __imgs: [] }, null]
+    ]) {
+      const res = await postImport(buildImportZip(csvLines([rowCells(over)])));
+      assert.strictEqual(res.status, 200);
+      if (reason) {
+        assert.strictEqual(res.body.failed.length, 1);
+        assert.match(res.body.failed[0].reason, reason);
+      } else {
+        assert.strictEqual(res.body.created.length, 1); // 空配图数组合法
+      }
+    }
+  });
+
+  it('内部异常仅返回通用行错误并写服务端日志', async () => {
+    const st = globalThis.__storage;
+    const originalPut = st.put;
+    const originalError = console.error;
+    const errors = [];
+    st.put = async () => { throw new TypeError('internal-secret'); };
+    console.error = (...args) => errors.push(args);
+    try {
+      const res = await postImport(buildImportZip(csvLines([rowCells({ __imgs: ['a.png'] })]), { 'a.png': MIN_PNG }));
+      assert.strictEqual(res.status, 200);
+      assert.deepStrictEqual(res.body.failed, [{ row: 2, reason: '导入失败（第 2 行）' }]);
+      assert.doesNotMatch(JSON.stringify(res.body), /internal-secret|TypeError/);
+      assert.strictEqual(errors.length, 1);
+      assert.ok(errors[0][1] instanceof TypeError);
+    } finally {
+      st.put = originalPut;
+      console.error = originalError;
+    }
   });
 
   it('部分失败：失败行不建任务且其新增图片被清理', async () => {

@@ -1704,13 +1704,18 @@ module.exports = function createRoutes(ctx) {
 
   // GET /api/jobs/import-template：下载导入模板 zip
   router.get('/jobs/import-template', requireAuth, (req, res) => {
+    // 固定按 +08:00 计算明天，避免依赖服务器时区或下载后立即过期。
+    const tomorrow = new Date(Date.now() + 8 * 3600000);
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    const sampleTime = `${tomorrow.toISOString().slice(0, 10)}T10:00:00+08:00`;
     const sample = jobToCsvCells({
-      title: '示例标题', scheduledAt: new Date(Date.now() + 3600000).toISOString(),
+      title: '示例标题', scheduledAt: sampleTime,
       type: '原创', accountName: '账号名（需与账号库中名称一致）',
       templateName: '模板名（需与已有模板名称一致）',
       text: '这里是正文，可包含换行、逗号与引号。',
       topic: null, mentions: []
     }, ['示例图片.jpg']);
+    sample[1] = `iso:${sampleTime}`; // 模板示例始终输出完整 +08:00 偏移。
     const csvText = [
       csvRow(CSV_HEADERS),
       csvRow(['# 说明行：以 # 开头的行会被忽略。请勿修改表头。']),
@@ -1789,21 +1794,21 @@ module.exports = function createRoutes(ctx) {
             return res.status(400).json({ error: msg });
           }
 
-          // 结构预检：根 queue.csv（大小写兼容）+ images/ 一层；其他仅允许 README.txt
+          // 结构预检：根 queue.csv（大小写兼容）+ images/ 一层；静默忽略目录与系统元数据
           let csvEntry = null, csvCount = 0, unexpected = null;
           const images = new Map(); // images/ 内文件名(原样) -> {name, buffer}
           for (const e of entries) {
-            const segs = e.name.split('/');
-            if (segs.length === 1 && !e.isDir) {
-              if (segs[0].toLowerCase() === 'queue.csv') { csvEntry = e; csvCount++; }
-              else if (segs[0].toLowerCase() === 'readme.txt') { /* 允许 */ }
+            const clean = e.name.replace(/\/+$/, '');
+            const segs = clean ? clean.split('/') : [];
+            // unzip 已完成安全校验；目录占位、macOS 资源叉及隐藏路径不参与导入。
+            if (e.isDir || segs[0] === '__MACOSX' || segs.some(s => s.startsWith('.'))) continue;
+            if (segs.length === 1) {
+              const rootName = segs[0].toLowerCase();
+              if (rootName === 'queue.csv') { csvEntry = e; csvCount++; }
+              else if (rootName === 'readme.txt' || rootName === 'thumbs.db' || rootName === 'desktop.ini') { /* 允许或忽略 */ }
               else { unexpected = e.name; break; }
-            } else if (segs[0] === 'images' && segs.length === 2 && !e.isDir) {
+            } else if (segs[0] === 'images' && segs.length === 2) {
               images.set(segs[1], { name: segs[1], buffer: e.buffer });
-            } else if (segs[0] === 'images' && segs.length === 1 && e.isDir) {
-              /* images/ 目录占位 */
-            } else if (e.isDir && segs.every(s => s === '')) {
-              /* 空 */
             } else { unexpected = e.name; break; }
           }
           if (unexpected) return res.status(400).json({ error: `不允许的条目: ${unexpected}（仅接受根 queue.csv、images/ 一层目录与 README.txt）` });
@@ -1850,7 +1855,10 @@ module.exports = function createRoutes(ctx) {
           for (const r of rows) {
             if (r.skipped) { skipped.push({ row: r.row, reason: r.reason }); continue; }
             let rowNewKeys = []; // 本行新增入库的图片 key（行失败时回滚）
+            let rowFailed = false;
             const fail = (reason) => {
+              if (rowFailed) return Promise.resolve();
+              rowFailed = true;
               failed.push({ row: r.row, reason });
               let chain = Promise.resolve();
               for (const k of rowNewKeys) {
@@ -1861,8 +1869,7 @@ module.exports = function createRoutes(ctx) {
               rowNewKeys = [];
               return chain;
             };
-            let rowFailed = false;
-            const rowFail = async (reason) => { await fail(reason); rowFailed = true; };
+            const rowFail = fail;
             try {
               // 标题 ≤20、正文非空、类型合法
               if (r.title.length > 20) { await rowFail('标题最多 20 个字'); }
@@ -1876,8 +1883,8 @@ module.exports = function createRoutes(ctx) {
                 const accM = matchByName(listMy(store.listAccounts(), req.user.id), r.accountName, '账号');
                 const tplM = matchByName(listMy(store.listTemplates(), req.user.id), r.templateName, '模板');
                 const account = accM.hit, template = tplM.hit;
-                if (!account) await rowFail(accM.error || '账号匹配失败');
-                else if (!template) await rowFail(tplM.error || '模板匹配失败');
+                if (!account) { await rowFail(accM.error || '账号匹配失败'); continue; }
+                if (!template) { await rowFail(tplM.error || '模板匹配失败'); continue; }
                 // 配图 JSON 数组（保序）
                 let imgs;
                 try { imgs = JSON.parse(r.images || '[]'); } catch (e) { imgs = null; }
@@ -1961,7 +1968,8 @@ module.exports = function createRoutes(ctx) {
                 }
               }
             } catch (e) {
-              await fail(`导入失败: ${e.message}`);
+              console.error(`[jobs/import] 第 ${r.row} 行导入失败`, e);
+              await fail(`导入失败（第 ${r.row} 行）`);
             }
           }
           store.save();
@@ -1970,13 +1978,15 @@ module.exports = function createRoutes(ctx) {
           }
           res.json({ folderId: folder ? folder.id : null, created, skipped, failed });
         } catch (e) {
-          res.status(500).json({ error: '导入失败: ' + e.message });
+          console.error('[jobs/import] 导入失败', e);
+          res.status(500).json({ error: '导入失败，请稍后重试' });
         } finally {
           importLocks.delete(req.user.id);
         }
       })().catch((e) => {
         importLocks.delete(req.user.id);
-        if (!res.headersSent) res.status(500).json({ error: '导入失败: ' + e.message });
+        console.error('[jobs/import] 导入处理失败', e);
+        if (!res.headersSent) res.status(500).json({ error: '导入失败，请稍后重试' });
       });
     });
   });
