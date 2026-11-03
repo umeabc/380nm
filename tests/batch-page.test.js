@@ -7,11 +7,11 @@ const path = require('node:path');
 
 // 最小 DOM 桩记录真实事件处理器，不给生产代码新增测试入口。
 function element() {
-  return { style: {}, dataset: {}, innerHTML: '', textContent: '', value: '', listeners: {},
+  return { style: {}, dataset: {}, attributes: {}, innerHTML: '', textContent: '', value: '', listeners: {},
     addEventListener(name, fn) { this.listeners[name] = fn; },
     querySelector() { return null; }, querySelectorAll() { return []; },
-    focus() {}, select() {}, remove() { this.removed = true; },
-    contains(target) { return target === this; }, setAttribute() {},
+    focus() { this.focused = true; }, select() {}, remove() { this.removed = true; },
+    contains(target) { return target === this; }, setAttribute(name, value) { this.attributes[name] = value; },
     getBoundingClientRect() { return { left: 20, bottom: 60 }; }, offsetHeight: 100 };
 }
 async function page(options = {}) {
@@ -53,12 +53,12 @@ async function page(options = {}) {
       }) }
     };
   };
-  const context = vm.createContext({ console, Date, URL, Map, Set, document, fetch,
-    AbortController, TextDecoder, TextEncoder, setTimeout, clearTimeout,
+  const context = vm.createContext({ console, Date: options.Date || Date, URL, Map, Set, document, fetch,
+    AbortController, TextDecoder, TextEncoder, setTimeout: options.setTimeout || setTimeout, clearTimeout: options.clearTimeout || clearTimeout,
     crypto: { randomUUID: () => `uuid-${++uuidCounter}` },
     window: { innerWidth: 1000, innerHeight: 800 },
     App: { $, $$: selector => selector === '[data-b-person]' ? (options.selects || []) : [], api: apiFn, icon: () => '<svg></svg>', imageSrc: image => image?.url || '', esc: s => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'),
-      boot: async () => {}, toast() {}, debounce: fn => fn },
+      toLocalInput: date => localInput(date), boot: async () => {}, toast() {}, debounce: fn => fn },
     ConfirmDialog: { create: () => ({
       open() { dialogCalls.push('open'); },
       close() {
@@ -93,6 +93,189 @@ async function page(options = {}) {
 function row(id) {
   return { id, status: 'ready', title: '', images: [], selectedImages: [], credit: '作者', variables: {}, manualTitle: false, scheduledAt: '', collision: false };
 }
+
+function localInput(date) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+async function timePage(now = new Date(2030, 5, 15, 9, 30)) {
+  const clock = { now: now.getTime() }, timers = new Map();
+  let timerId = 0;
+  class FixedDate extends Date {
+    constructor(...args) { super(...(args.length ? args : [clock.now])); }
+    static now() { return clock.now; }
+  }
+  const p = await page({ Date: FixedDate,
+    setTimeout(callback, delay) { const id = ++timerId; timers.set(id, { callback, delay }); return id; },
+    clearTimeout(id) { timers.delete(id); }
+  });
+  Object.assign(p.state.config, { date: '2030-06-15', start: '10:00', end: '14:00' });
+  const a = { ...row('custom'), title: '保留原标题', scheduledAt: new Date(2030, 5, 15, 12, 34, 56).toISOString() };
+  p.state.rows = [a];
+  function openCustom() {
+    const panel = element(), input = element(), error = element(), form = element(), cancel = element();
+    const children = new Map([['input', input], ['.batch-time-error', error], ['form', form], ['[data-cancel-time]', cancel], ['button', element()]]);
+    panel.querySelector = selector => children.get(selector) || null;
+    panel.contains = target => target === panel || [...children.values()].includes(target);
+    p.document.createElement = () => panel;
+    p.openTimePopover(a, element());
+    assert.match(panel.innerHTML, /data-custom-time>自定义…/);
+    assert.ok(panel.innerHTML.indexOf('data-custom-time') > panel.innerHTML.lastIndexOf('data-slot='));
+    const target = { closest: selector => selector === '[data-custom-time]' ? target : null };
+    let stopped = false;
+    panel.listeners.click({ target, stopPropagation() { stopped = true; } });
+    // 切换表单会移除原按钮，若继续冒泡，外部点击监听将把浮层错误关闭。
+    if (!stopped) p.document.listeners.click({ target });
+    assert.equal(panel.removed, undefined);
+    return { panel, input, error, cancel, submit(value) {
+      input.value = value;
+      let prevented = false;
+      form.listeners.submit({ preventDefault() { prevented = true; } });
+      assert.equal(prevented, true);
+    } };
+  }
+  return { ...p, a, clock, timers, openCustom };
+}
+
+test('时间徽章仅可编辑且有排期的行支持双击，时钟单击仍显示候选', async () => {
+  const p = await timePage();
+  for (const status of ['ready', 'enqueue_failed', 'queued', 'parsing', 'parse_failed']) {
+    for (const hasTime of [true, false]) {
+      const a = { ...p.a, status, scheduledAt: hasTime ? p.a.scheduledAt : '' };
+      p.state.rows = [a];
+      const badge = element(), clockButton = element(), tr = element(), box = element();
+      const editable = ['ready', 'enqueue_failed'].includes(status) && hasTime;
+      tr.dataset.rowId = a.id;
+      tr.querySelector = selector => selector === '.batch-time-badge' ? badge : selector === '.batch-time-edit' ? (editable ? clockButton : null) : element();
+      box.querySelectorAll = selector => selector === '[data-row-id]' ? [tr] : [];
+      p.bindRowEvents(box);
+      assert.equal(typeof badge.listeners.dblclick === 'function', editable);
+      assert.equal(p.renderRow(a, 0).includes('title="双击或点击右侧时钟修改计划时间"'), editable);
+      if (editable) {
+        badge.listeners.dblclick({ currentTarget: badge });
+        const first = p.document.panel;
+        assert.match(first.innerHTML, /data-slot="0"/);
+        clockButton.listeners.click({ currentTarget: clockButton });
+        assert.equal(first.removed, true);
+        assert.match(p.document.panel.innerHTML, /data-slot="0"/);
+        assert.doesNotMatch(p.document.panel.innerHTML, /datetime-local/);
+      }
+    }
+  }
+});
+
+test('自定义表单使用本地分钟值，输入获焦且切换不会被外部点击监听关闭', async () => {
+  const p = await timePage();
+  const { panel, input } = p.openCustom();
+  assert.match(panel.innerHTML, /type="datetime-local" step="60"/);
+  assert.equal(input.value, '2030-06-15T12:34');
+  assert.equal(input.min, '2030-06-15T10:00');
+  assert.equal(input.focused, true);
+  p.document.listeners.click({ target: input });
+  assert.equal(panel.removed, undefined);
+});
+
+for (const manualTitle of [false, true]) {
+  test(`自定义时间保存 ISO 排期、撞点及草稿且保留标题（manualTitle=${manualTitle}）`, async () => {
+    const p = await timePage();
+    p.a.manualTitle = manualTitle;
+    // 不限制候选网格，不要求晚于原排期或其他行；只修改这一行。
+    const scheduledAt = new Date(2030, 5, 15, 11, 17).toISOString();
+    const other = { ...row('other'), scheduledAt, title: '另一行' };
+    p.state.rows.push(other);
+    const form = p.openCustom();
+    form.submit('2030-06-15T11:17');
+    assert.equal(p.a.scheduledAt, scheduledAt);
+    assert.equal(p.a.manualTime, scheduledAt);
+    assert.equal(p.a.title, '保留原标题');
+    assert.equal(p.a.manualTitle, manualTitle);
+    assert.equal(other.scheduledAt, scheduledAt);
+    assert.equal(other.title, '另一行');
+    assert.equal(p.a.collision, true);
+    assert.equal(other.collision, true);
+    assert.equal(form.panel.removed, true);
+    assert.equal(p.state.saveDirty, true);
+    const [id, timer] = [...p.timers].find(([, task]) => task.delay === 500);
+    p.timers.delete(id);
+    await timer.callback();
+    const saves = p.apiCalls.filter(call => call.method === 'PUT');
+    assert.equal(saves.length, 1);
+    const saved = saves[0].body.rows.find(item => item.id === p.a.id);
+    assert.equal(saved.scheduledAt, scheduledAt);
+    assert.equal(saved.manualTime, scheduledAt);
+    assert.equal(saved.title, '保留原标题');
+    assert.equal(saved.manualTitle, manualTitle);
+  });
+}
+
+test('自定义无效日期、过去时间和原排期下界之前的时间保留浮层并显示红框错误', async () => {
+  const p = await timePage(new Date(2030, 5, 15, 9, 30, 10));
+  // 原行配置优先于已改变的全局时间窗。
+  p.a.config = { start: '10:00' };
+  p.state.config.start = '08:00';
+  const before = p.a.scheduledAt;
+  const form = p.openCustom();
+  for (const [value, message] of [
+    ['', '请输入有效的日期和时间'], ['not-a-date', '请输入有效的日期和时间'],
+    ['2030-02-30T12:00', '请输入有效的日期和时间'],
+    ['2030-06-15T09:29', '不能早于当前时间'], ['2030-06-15T09:30', '不能早于当前时间'],
+    ['2030-06-15T09:59', '不能早于原排期起始时间（2030-06-15 10:00）']
+  ]) {
+    form.submit(value);
+    assert.equal(form.error.textContent, message);
+    assert.equal(form.input.attributes['aria-invalid'], 'true');
+    assert.equal(form.panel.removed, undefined);
+    assert.equal(p.a.scheduledAt, before);
+    assert.equal(p.a.manualTime, undefined);
+    assert.equal(p.a.title, '保留原标题');
+    assert.equal(p.state.saveDirty, false);
+    assert.equal(p.timers.size, 0);
+    form.input.listeners.input();
+    assert.equal(form.error.textContent, '');
+    assert.equal(form.input.attributes['aria-invalid'], 'false');
+  }
+  form.submit('2030-06-15T10:00');
+  assert.equal(p.a.scheduledAt, new Date(2030, 5, 15, 10).toISOString());
+});
+
+test('自定义按确认时的当前时间校验，等于当前整分可用，min 向上取整', async () => {
+  const p = await timePage(new Date(2030, 5, 15, 11, 20, 10));
+  const form = p.openCustom();
+  assert.equal(form.input.min, '2030-06-15T11:21');
+  p.clock.now = new Date(2030, 5, 15, 12, 0).getTime();
+  form.submit('2030-06-15T11:59');
+  assert.equal(form.error.textContent, '不能早于当前时间');
+  form.submit('2030-06-15T12:00');
+  assert.equal(p.a.scheduledAt, new Date(p.clock.now).toISOString());
+  assert.equal(form.panel.removed, true);
+});
+
+test('自定义允许跨日及时间窗外时间，候选改时仍更新自动标题', async () => {
+  const p = await timePage();
+  p.openCustom().submit('2030-06-16T16:23');
+  assert.equal(p.a.scheduledAt, new Date(2030, 5, 16, 16, 23).toISOString());
+  assert.equal(p.a.title, '保留原标题');
+  assert.equal(p.a.manualTitle, false);
+  const slot = p.timeOptions(p.a)[0];
+  p.changeTime(p.a, slot);
+  assert.equal(p.a.title, slot.title);
+});
+
+test('自定义取消、Escape 和外部点击均关闭浮层且不修改或保存', async () => {
+  const p = await timePage();
+  const before = p.a.scheduledAt;
+  for (const close of [form => form.cancel.listeners.click(), () => p.document.listeners.keydown({ key: 'Escape' }), () => p.document.listeners.click({ target: element() })]) {
+    const form = p.openCustom();
+    form.input.value = '2030-06-16T13:00';
+    close(form);
+    assert.equal(form.panel.removed, true);
+    assert.equal(p.a.scheduledAt, before);
+    assert.equal(p.a.manualTime, undefined);
+    assert.equal(p.state.saveDirty, false);
+    assert.equal(p.timers.size, 0);
+  }
+});
 
 test('已有结果后开始编排会追加到末尾且不改旧行', async () => {
   const p = await page();

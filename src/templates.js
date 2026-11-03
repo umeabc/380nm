@@ -81,12 +81,12 @@ module.exports = { DEFAULT_TEMPLATES, TASK_TYPES, TYPE_SLOTS, SLOT_LABELS, slotS
 function DEFAULT_BATCH_TEMPLATES() {
   return [{
     id: 'tpl_batch_credit', name: '作品转载', category: 'batch',
-    content: '{{credit}}\n\n{{body}}', signatureFormat: '作者：{{author}}\n账号：{{handle}}\n作品：{{sourceUrl}}',
+    content: '{{credit}}\n\n{{body}}', signatureFormat: '作者：{{author}}\n账号：{{handle}}',
     maxImages: 9, variables: [{ key: 'body', label: '补充正文', type: 'textarea', placeholder: '可选的作品说明' }]
   }, {
     id: 'tpl_batch_translation', name: '作品翻嵌', category: 'batch',
     content: '{{credit}}\n参与人员：{{staff1}} {{staff2}}\n\n{{body}}',
-    signatureFormat: '原作者：{{author}}\n账号：{{handle}}\n作品：{{sourceUrl}}', maxImages: 9,
+    signatureFormat: '原作者：{{author}}\n账号：{{handle}}', maxImages: 9,
     variables: [{ key: 'body', label: '补充正文', type: 'textarea', placeholder: '可选的作品说明' }]
   }];
 }

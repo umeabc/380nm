@@ -391,13 +391,29 @@ describe('POST /api/jobs/export 与 GET /api/jobs/import-template', () => {
         headers.push(header);
         if (template.id.startsWith('tpl_batch')) {
           assert.match(header, /作者说明/);
-          assert.match(header, /author,handle,sourceUrl/);
+          assert.match(header, /author,handle/);
+          assert.doesNotMatch(header, /sourceUrl/);
         }
         assert.doesNotMatch(header, /staff\d|translator|typesetter/);
       }
       // 当前六份没有正文、署名和变量完全一致的模板，无须跳过。
       assert.strictEqual(new Set(headers).size, templates.length);
     } finally { store.data.templates = store.data.templates.filter(t => !templates.includes(t)); }
+  });
+
+  it('2.0.14 手动加入 sourceUrl 的批量署名仍导出作品链接变量', async () => {
+    const template = {
+      ...require('../src/templates').DEFAULT_BATCH_TEMPLATES()[0],
+      id: 'manual-source-url', userId: 'usr_test',
+      signatureFormat: '作者：{{author}}\n账号：{{handle}}\n作品：{{sourceUrl}}'
+    };
+    store.data.templates.push(template);
+    try {
+      const response = await request('GET', '/api/jobs/import-template?templateId=' + template.id, null, cookies.test);
+      assert.strictEqual(response.status, 200);
+      const header = unzip(response.buf).find(e => e.name === 'queue.csv').buffer.toString('utf8').split('\r\n')[0];
+      assert.match(header, /author,handle,sourceUrl/);
+    } finally { store.data.templates = store.data.templates.filter(t => t !== template); }
   });
 
   it('作者说明和原作者独立保存，人员按规范化名称有序匹配，缺失或歧义导致行失败', async () => {

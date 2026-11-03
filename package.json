@@ -1,6 +1,6 @@
 {
   "name": "bili-dyn-publisher",
-  "version": "2.0.13",
+  "version": "2.0.14",
   "description": "380nm v2.0 — 紫色创作工作台，模板化动态发布与分钟级批量编排",
   "main": "server.js",
   "scripts": {

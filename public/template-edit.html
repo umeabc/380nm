@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>编辑模板 · 380nm</title>
-<link rel="stylesheet" href="/css/app.css?v=2.0.13">
+<link rel="stylesheet" href="/css/app.css?v=2.0.14">
 </head>
 <body>
 <div class="sidebar" id="sidebar"></div>
@@ -28,7 +28,7 @@
         <textarea id="tf-content" rows="7" placeholder="例：&#10;每日早报 {{date}}&#10;&#10;{{news}}"></textarea>
       </div>
       <div class="fld" id="tf-signature-wrap" style="margin-bottom:16px" hidden>
-        <label for="tf-signature">作者署名格式</label><textarea id="tf-signature" rows="4" maxlength="2000" placeholder="作者：{{author}}&#10;账号：{{handle}}&#10;作品：{{sourceUrl}}"></textarea>
+        <label for="tf-signature">作者署名格式</label><textarea id="tf-signature" rows="4" maxlength="2000" placeholder="作者：{{author}}&#10;账号：{{handle}}"></textarea>
         <p class="muted">署名占位符：{{origAuthor}} 原作者 / {{author}} 作者名、{{handle}} 账号（不含 @）、{{pixivId}} Pixiv 作者 ID、{{sourceUrl}} 作品链接。正文用 {{credit}} 插入署名、{{body}} 插入补充正文、{{title}} 插入标题。</p>
       </div>
       <p class="muted">翻译、嵌字已合并为参与人员：从账号库多选，不限人数。正文和署名格式按选择顺序使用 {{staff1}}、{{staff2}}…{{staffN}}，未选到的位置输出空字符串。旧变量 {{translator}} / {{typesetter}} 分别作为 {{staff1}} / {{staff2}} 的别名继续生效，无需另建人员变量定义。</p>
@@ -43,8 +43,8 @@
   </main>
 </div>
 <div id="toast-wrap"></div>
-<script src="/js/text-render.js?v=2.0.13"></script>
-<script src="/js/common.js?v=2.0.13"></script>
-<script src="/js/pages/template-edit.js?v=2.0.13"></script>
+<script src="/js/text-render.js?v=2.0.14"></script>
+<script src="/js/common.js?v=2.0.14"></script>
+<script src="/js/pages/template-edit.js?v=2.0.14"></script>
 </body>
 </html>

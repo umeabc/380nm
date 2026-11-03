@@ -808,7 +808,7 @@
       <td class="batch-cell">${i + 1}</td>
       <td class="batch-cell">${thumb}</td>
       <td class="batch-cell batch-title" ${editable ? 'title="双击修改标题" data-edit-title' : ''}>${esc(row.title || '解析后生成')}</td>
-      <td class="batch-cell"><span class="batch-time-control"><span class="pill gray batch-time-badge ${timeClass}">${timeStr}</span>${editable && dt ? '<button type="button" class="icon-btn sm batch-time-edit" aria-label="修改计划时间"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>' : ''}</span></td>
+      <td class="batch-cell"><span class="batch-time-control"><span class="pill gray batch-time-badge ${timeClass}"${editable && dt ? ' title="双击或点击右侧时钟修改计划时间"' : ''}>${timeStr}</span>${editable && dt ? '<button type="button" class="icon-btn sm batch-time-edit" aria-label="修改计划时间"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>' : ''}</span></td>
       <td class="batch-cell batch-credit">${esc(row.credit).replace(/\n/g, '<br>')}</td>
       <td class="batch-cell">${row.images.length ? `${row.selectedImages.length} 张` : '—'}</td>
       <td class="batch-cell">${statusMap[row.status] || ''}${(row.jobError || row.error) ? '<div class="batch-row-error">' + esc(row.jobError || row.error) + '</div>' : ''}</td>
@@ -872,10 +872,10 @@
     warn.textContent = '存在计划时间撞点（已标黄），仍可入队；可修改时间错开。';
   }
 
-  function changeTime(row, slot) {
+  function changeTime(row, slot, keepTitle = false) {
     row.scheduledAt = slot.scheduledAt;
     row.manualTime = slot.scheduledAt;
-    if (!row.manualTitle) row.title = slot.title;
+    if (!keepTitle && !row.manualTitle) row.title = slot.title;
     detectCollisions();
     debouncedSave();
   }
@@ -893,20 +893,68 @@
     panel.className = 'batch-time-popover';
     panel.setAttribute('role', 'dialog');
     panel.setAttribute('aria-label', '修改计划时间');
-    panel.innerHTML = options.map((slot, i) => `<button type="button" class="batch-time-option" data-slot="${i}">${esc(slot.label)}</button>`).join('');
+    const position = () => {
+      const rect = anchor.getBoundingClientRect();
+      panel.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 252))}px`;
+      panel.style.top = `${Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - panel.offsetHeight - 8))}px`;
+    };
+    panel.innerHTML = options.map((slot, i) => `<button type="button" class="batch-time-option" data-slot="${i}">${esc(slot.label)}</button>`).join('') +
+      '<button type="button" class="batch-time-option batch-time-custom" data-custom-time>自定义…</button>';
     panel.addEventListener('click', e => {
       const btn = e.target.closest('[data-slot]');
-      if (!btn) return;
-      changeTime(row, options[Number(btn.dataset.slot)]);
-      renderTable();
+      if (btn) {
+        changeTime(row, options[Number(btn.dataset.slot)]);
+        renderTable();
+      } else if (e.target.closest('[data-custom-time]')) {
+        // 切换后按钮会从 DOM 脱离，阻止本次点击被外部关闭监听误判。
+        e.stopPropagation();
+        showCustomTimeForm(row, panel, position);
+        position();
+      }
     });
     document.body.appendChild(panel);
-    const rect = anchor.getBoundingClientRect();
-    panel.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 252))}px`;
-    panel.style.top = `${Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - panel.offsetHeight - 8))}px`;
+    position();
     timePopover = panel;
     popoverAnchor = anchor;
     panel.querySelector('button')?.focus();
+  }
+
+  function showCustomTimeForm(row, panel, position) {
+    // 与当前行的候选列表共用日期和起始时间；不施加自动追加排期的 after 限制。
+    const earliest = new Date(row.scheduledAt);
+    const [hour, minute] = rowConfig(row).start.split(':').map(Number);
+    earliest.setHours(hour, minute, 0, 0);
+    panel.innerHTML = `<form class="batch-time-custom-form" novalidate>
+      <label for="batch-custom-time">自定义计划时间</label>
+      <input id="batch-custom-time" class="ctl" type="datetime-local" step="60" required aria-describedby="batch-custom-time-error">
+      <span id="batch-custom-time-error" class="batch-time-error" role="alert"></span>
+      <div class="batch-time-form-actions"><button type="submit" class="btn primary sm">确认</button><button type="button" class="btn sm" data-cancel-time>取消</button></div>
+    </form>`;
+    const input = panel.querySelector('input');
+    const error = panel.querySelector('.batch-time-error');
+    input.value = App.toLocalInput(new Date(row.scheduledAt));
+    input.min = App.toLocalInput(new Date(Math.ceil(Math.max(Date.now(), earliest.getTime()) / 60000) * 60000));
+    const setError = message => {
+      input.setAttribute('aria-invalid', message ? 'true' : 'false');
+      error.textContent = message;
+      position();
+    };
+    input.addEventListener('input', () => setError(''));
+    panel.querySelector('[data-cancel-time]').addEventListener('click', closeTimePopover);
+    panel.querySelector('form').addEventListener('submit', e => {
+      e.preventDefault();
+      const date = new Date(input.value);
+      let message = '';
+      if (isNaN(date.getTime()) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(input.value) || App.toLocalInput(date) !== input.value) message = '请输入有效的日期和时间';
+      else if (date.getTime() < Date.now()) message = '不能早于当前时间';
+      else if (date < earliest) message = `不能早于原排期起始时间（${App.toLocalInput(earliest).replace('T', ' ')}）`;
+      if (message) { setError(message); input.focus(); return; }
+      // 排期、排序与草稿均使用 ISO 字符串；自定义时间不改变标题及其手动状态。
+      changeTime(row, { scheduledAt: date.toISOString(), time: input.value.slice(11) }, true);
+      renderTable();
+    });
+    panel.scrollTop = 0;
+    input.focus();
   }
 
   // 单一浮层入口；外部点击、Esc 和选中均关闭。
@@ -931,6 +979,9 @@
       const row = state.rows.find(r => r.id === el.dataset.rowId);
       el.querySelector('[data-edit-title]')?.addEventListener('dblclick', e => editTitle(row, e.currentTarget));
       el.querySelector('.batch-time-edit')?.addEventListener('click', e => openTimePopover(row, e.currentTarget));
+      if ((row.status === 'ready' || row.status === 'enqueue_failed') && row.scheduledAt) {
+        el.querySelector('.batch-time-badge')?.addEventListener('dblclick', e => openTimePopover(row, e.currentTarget));
+      }
       el.querySelector('.batch-edit').addEventListener('click', () => { row.editorOpen = !row.editorOpen; renderTable(); });
       el.querySelector('.batch-delete').addEventListener('click', () => {
         state.rows = state.rows.filter(r => r !== row);

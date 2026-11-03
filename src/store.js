@@ -117,6 +117,13 @@ class Store {
       }
     }
     this.data.templateCategoryUsers = [...migrated];
+    // 2.0.14：仅清理升级前的默认作品链接，后续用户可手动加回 sourceUrl。
+    if (!this.data.templateSignatureSourceUrlMigrated) {
+      for (const t of this.data.templates) {
+        t.signatureFormat = t.signatureFormat.replace(/\n?作品：\{\{\s*sourceUrl\s*\}\}/g, '');
+      }
+      this.data.templateSignatureSourceUrlMigrated = true;
+    }
     for (const k of Object.keys(this.data.settings)) {
       if (/danbooru|donmai/i.test(k)) delete this.data.settings[k];
     }

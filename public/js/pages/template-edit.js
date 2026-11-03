@@ -33,7 +33,7 @@
   }
   function fillTplForm(tpl) {
     $('#tf-category').value = tpl ? tpl.category || 'dynamic' : (new URLSearchParams(location.search).get('category') === 'batch' ? 'batch' : 'dynamic');
-    $('#tf-signature').value = tpl ? tpl.signatureFormat || '' : '作者：{{author}}\n账号：{{handle}}\n作品：{{sourceUrl}}';
+    $('#tf-signature').value = tpl ? tpl.signatureFormat || '' : '作者：{{author}}\n账号：{{handle}}';
     updateCategory();
     $('#btn-tpl-del').hidden = !tpl;
     $('#tpl-form-title').textContent = tpl ? '编辑模板：' + tpl.name : '新建模板';
