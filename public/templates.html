@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>模板管理 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css?v=2.0.13">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page tile-page" id="page">
+    <div class="tile-stack">
+    <div class="pagehead tile">
+      <div class="ph-row">
+        <div><div class="eyebrow">TEMPLATES</div><h2>让表达自有章法</h2><p class="muted">分别管理单条动态与批量编排的正文和署名格式。</p></div>
+        <div class="ph-ops"><a class="btn primary sm" id="tpl-new" href="/templates/new?category=dynamic">新建模板</a></div>
+      </div>
+    </div>
+    <div class="tile templates-card">
+      <div class="frow" style="margin-bottom:20px" role="tablist" aria-label="模板类别">
+        <button class="btn primary" id="tpl-tab-dynamic" role="tab" aria-selected="true">动态模板</button>
+        <button class="btn" id="tpl-tab-batch" role="tab" aria-selected="false">批量编排模板</button>
+      </div><p class="muted" id="tpl-category-help"></p><div id="tpl-list"></div>
+    </div>
+    </div>
+  </main>
+</div>
+<div id="toast-wrap"></div>
+<script src="/js/text-render.js?v=2.0.13"></script>
+<script src="/js/common.js?v=2.0.13"></script>
+<script src="/js/pages/templates.js?v=2.0.13"></script>
+</body>
+</html>

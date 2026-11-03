@@ -1,0 +1,5 @@
+name: astrbot_plugin_380nm
+display_name: 380nm 精简助手
+desc: /bd 链接存草稿，支持可选标题、中文时间、任务详情与B站账号状态。
+version: v1.1.0
+author: 380nm

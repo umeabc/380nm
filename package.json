@@ -1,0 +1,24 @@
+{
+  "name": "bili-dyn-publisher",
+  "version": "2.0.13",
+  "description": "380nm v2.0 — 紫色创作工作台，模板化动态发布与分钟级批量编排",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "reset": "node scripts/reset.js",
+    "test": "node --test tests/*.test.js",
+    "check": "node scripts/check.js"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1136.0",
+    "express": "^4.21.2",
+    "multer": "^2.5.0",
+    "qrcode": "1.5.4",
+    "sharp": "^0.35.5",
+    "undici": "6.29.1"
+  }
+}

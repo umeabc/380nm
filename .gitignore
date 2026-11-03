@@ -1,0 +1,13 @@
+node_modules/
+data/
+*.log
+.env
+__pycache__/
+*.pyc
+deploy*.py
+check.py
+survey.py
+verify.py
+test-results.txt
+.ui-review/
+dist/

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>发布队列 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css?v=2.0.13">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page tile-page queue-page" id="page">
+    <div class="tile-stack">
+<div class="queue-intro"><div><span class="eyebrow">PUBLISHING QUEUE</span><h2>让每一条动态，准时抵达。</h2><p>筛选、检查并管理你的发布计划。</p></div><label class="queue-search"><span>搜索任务</span><input id="queueSearch" type="search" placeholder="搜索标题或正文" autocomplete="off"></label></div>
+      <section class="tile queue-filters">
+        <div class="tabs" id="tabs"></div>
+        <div class="filterbar" id="filterbar"></div>
+        <div class="toolbar tile-head">
+          <span class="fb-label">分组</span>
+          <div class="seg" id="groupSeg">
+            <button data-g="target" class="on">按发布目标</button>
+            <button data-g="template">按模板</button>
+            <button data-g="none">不分组</button>
+          </div>
+          <div class="tb-right" id="resultInfo"></div>
+        </div>
+      </section>
+      <section class="tile queue-operations" aria-label="任务选择与导入导出">
+        <div class="queue-selectbar" id="selectbar">
+          <div class="sb-left">
+            <span class="sb-info" id="sbInfo"><span class="sb-empty">未选择任务</span></span>
+          </div>
+          <div class="sb-right">
+            <div class="sb-bulk-group" role="group" aria-label="选择操作">
+              <button class="sb-bulk-btn" type="button" data-bulk="all" title="选中当前筛选结果的全部任务（含折叠分组内）">全选</button>
+              <button class="sb-bulk-btn" type="button" data-bulk="visible" title="仅选中当前展开可见的任务">仅选可见</button>
+              <button class="sb-bulk-btn" type="button" data-bulk="invert" title="反选当前筛选结果">反选</button>
+              <button class="sb-bulk-btn" type="button" data-bulk="clear" title="清空全部已选">清空</button>
+            </div>
+            <span class="sb-sep"></span>
+            <div class="sb-op-group">
+              <button class="btn sm" type="button" id="importBtn">导入 ZIP</button>
+            </div>
+            <div class="sb-template-group" role="group" aria-label="模板下载">
+              <select class="ctl" id="downloadTemplate" aria-label="下载模板选择"><option value="">请选择模板…</option></select>
+              <button type="button" class="link-btn sb-tpl-link" id="tplLink" disabled>下载模板</button>
+            </div>
+            <button class="btn sm primary" type="button" id="exportBtn" disabled>导出所选（0）</button>
+            <input type="file" id="importFile" accept=".zip" hidden>
+          </div>
+        </div>
+        <div class="import-panel" id="importPanel" hidden></div>
+      </section>
+      <div id="list" class="tile-stack"></div>
+    </div>
+  </main>
+</div>
+<div id="toast-wrap"></div>
+<script src="/js/text-render.js?v=2.0.13"></script>
+<script src="/js/common.js?v=2.0.13"></script>
+<script src="/js/pages/queue.js?v=2.0.13"></script>
+</body>
+</html>

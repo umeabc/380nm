@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#302044">
+<title>登录 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css?v=2.0.13">
+<link rel="stylesheet" href="/css/login.css?v=2.0.13">
+</head>
+<body class="anon">
+<main class="login-shell">
+  <section class="login-panel" aria-labelledby="login-title">
+    <div class="login-art" aria-hidden="true">
+      <div class="login-art-caption"><span class="login-art-line"></span>380nm · VERSION 2.0</div>
+      <div class="login-art-copy"><span class="login-overline">YOUR CONTENT, IN GOOD ORDER</span><h2>创作有热爱，<br>发布有节奏。</h2><p>从灵感到动态，将内容、素材与时间<br>安排在同一个工作台。</p></div>
+      <div class="login-orbit"><span class="orbit-core">λ</span><span class="orbit-word orbit-a">创作</span><span class="orbit-word orbit-b">编排</span><span class="orbit-word orbit-c">发布</span></div>
+      <div class="login-art-footer">为你的下一条动态，留出从容。</div>
+    </div>
+    <div class="login-content">
+      <div class="login-brand"><span class="login-brand-symbol" aria-hidden="true"></span>380nm <small>工作台</small></div>
+      <header class="login-heading">
+        <h1 id="login-title">欢迎回来</h1>
+        <p>登录你的账号，继续今天的创作。</p>
+      </header>
+      <form id="login-form" class="login-fields">
+        <div class="login-field">
+          <label class="login-sr-only" for="login-username">用户名</label>
+          <input id="login-username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="请输入用户名" required>
+        </div>
+        <div class="login-field">
+          <label class="login-sr-only" for="login-password">密码</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="请输入密码" required>
+        </div>
+        <div class="login-err" id="login-err" role="alert" aria-live="polite" style="display:none"></div>
+        <button type="submit" id="login-submit">进入工作台 <span aria-hidden="true">↗</span></button>
+      </form>
+      <footer class="login-notes">
+        <p>会话有效期 30 天</p>
+        <p>忘记密码？请联系管理员</p>
+      </footer>
+    </div>
+  </section>
+  <p class="login-page-note">380nm · B 站动态发布后台</p>
+</main>
+<script src="/js/pages/login.js?v=2.0.13"></script>
+</body>
+</html>

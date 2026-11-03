@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>自动登录 · 380nm（本地开发用）</title>
+<style>
+:root{--primary:#6C5CE7;--text:#1F2233;--text-2:#6B7183;--bg:#F4F5F9;--border:#ECEEF4;
+--font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:13px;display:grid;place-items:center;min-height:100vh}
+.box{background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 14px rgba(19,21,40,.05);padding:28px 30px;width:min(400px,92vw);text-align:center}
+.brand{font-size:17px;font-weight:600;letter-spacing:.2px}
+.sub{font-size:12px;color:var(--text-2);margin-top:5px}
+.msg{margin-top:18px;font-size:13px;color:var(--text-2);line-height:1.8}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--primary);margin-right:7px;animation:p 1s ease-in-out infinite}
+@keyframes p{0%,100%{opacity:.25}50%{opacity:1}}
+.bad{color:#DC2626}
+.tip{margin-top:20px;padding-top:14px;border-top:1px solid var(--border);font-size:11px;color:#9AA0B1;line-height:1.8;text-align:left}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="brand">380nm</div>
+  <div class="sub">B站动态定时发布后台 · 本地开发用自动登录</div>
+  <div class="msg" id="msg"><span class="dot"></span>正在登录…</div>
+  <div class="tip">
+    本页仅用于本地部署后的快速预览：会把 URL 里的账号密码提交到真实的
+    <code>/api/auth/login</code> 完成登录，随后跳转到目标页面。<br>
+    不需要时可直接删除 <code>public/_devlogin.html</code>。
+  </div>
+</div>
+<script>
+(function () {
+  var h = new URLSearchParams((location.hash || '').replace(/^#/, ''));
+  var u = h.get('u') || 'admin';
+  var p = h.get('p') || '';
+  var next = h.get('next') || '/dashboard';
+  if (next.charAt(0) !== '/') next = '/dashboard';
+
+  var msg = document.getElementById('msg');
+  // 立刻清掉地址栏里的账号密码，避免残留在地址栏/历史记录
+  try { history.replaceState(null, '', '/_devlogin.html'); } catch (e) { /* ignore */ }
+
+  fetch('/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: u, password: p })
+  })
+    .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, status: r.status, d: d }; }); })
+    .then(function (res) {
+      if (!res.ok) {
+        msg.className = 'msg bad';
+        msg.textContent = '登录失败：' + (res.d.error || ('HTTP ' + res.status));
+        return;
+      }
+      msg.innerHTML = '<span class="dot"></span>登录成功，正在进入「' + next + '」…';
+      location.replace(next);
+    })
+    .catch(function (e) {
+      msg.className = 'msg bad';
+      msg.textContent = '请求失败：' + e.message;
+    });
+})();
+</script>
+</body>
+</html>

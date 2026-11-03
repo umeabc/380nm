@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>账号库 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css?v=2.0.13">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page tile-page" id="page">
+    <div class="tile-stack">
+    <section class="group tile tile--flush">
+      <div class="card-head tile-head">
+        <span class="g-title" id="form-title">添加账号</span>
+        <span class="hint-r">账号库不再区分角色；发布动态的「翻译人员 / 嵌字人员」共用本列表的在岗账号</span>
+      </div>
+      <div class="card-body tile-body">
+        <div class="f-row">
+          <div class="field"><label>账号名（显示名）</label><input class="ctl" id="la-name" placeholder="如：白尾絵里厨"></div>
+          <div class="field"><label>handle（不含 @）</label><input class="ctl" id="la-handle" placeholder="如：tail_eri"></div>
+          <div class="field" style="max-width:180px"><label>在岗状态</label><select class="ctl" id="la-status">
+            <option value="在岗">在岗</option>
+            <option value="离岗">离岗</option>
+          </select></div>
+          <div class="field" style="max-width:220px"><label>B站 uid（可选，填了则 @ 可点击跳转）</label><input class="ctl" id="la-uid" placeholder="如：592632"></div>
+        </div>
+        <div class="frow">
+          <button class="btn primary" id="btn-save">添加账号</button>
+          <button class="btn" id="btn-cancel" style="display:none">取消编辑</button>
+        </div>
+      </div>
+    </section>
+    <section id="lib-list" class="tile-stack"></section>
+    </div>
+  </main>
+</div>
+<div id="toast-wrap"></div>
+<script src="/js/text-render.js?v=2.0.13"></script>
+<script src="/js/common.js?v=2.0.13"></script>
+<script src="/js/pages/libaccounts.js?v=2.0.13"></script>
+</body>
+</html>

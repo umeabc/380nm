@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>编辑模板 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css?v=2.0.13">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page tile-page" id="page">
+    <div class="pagehead">
+      <a class="backlink" href="/templates">← 返回模板列表</a>
+      <div class="ph-row"><h2 id="tpl-form-title">编辑模板</h2></div>
+    </div>
+    <div class="card tile" style="max-width:760px">
+      <input type="hidden" id="tf-id">
+      <div class="fld" style="margin-bottom:16px"><label for="tf-category">模板类别</label><select id="tf-category"><option value="dynamic">动态模板</option><option value="batch">批量编排模板</option></select></div>
+      <div class="frow" style="margin-bottom:12px">
+        <div class="fld"><label>模板名称</label><input id="tf-name" placeholder="如：每日早报"></div>
+        <div class="fld" style="max-width:140px"><label>图片上限</label><input id="tf-max" type="number" min="0" max="9" value="9"></div>
+      </div>
+      <div class="fld" style="margin-bottom:12px">
+        <label>内容模板（用 <span class="kbd">{{变量}}</span> 占位）</label>
+        <textarea id="tf-content" rows="7" placeholder="例：&#10;每日早报 {{date}}&#10;&#10;{{news}}"></textarea>
+      </div>
+      <div class="fld" id="tf-signature-wrap" style="margin-bottom:16px" hidden>
+        <label for="tf-signature">作者署名格式</label><textarea id="tf-signature" rows="4" maxlength="2000" placeholder="作者：{{author}}&#10;账号：{{handle}}&#10;作品：{{sourceUrl}}"></textarea>
+        <p class="muted">署名占位符：{{origAuthor}} 原作者 / {{author}} 作者名、{{handle}} 账号（不含 @）、{{pixivId}} Pixiv 作者 ID、{{sourceUrl}} 作品链接。正文用 {{credit}} 插入署名、{{body}} 插入补充正文、{{title}} 插入标题。</p>
+      </div>
+      <p class="muted">翻译、嵌字已合并为参与人员：从账号库多选，不限人数。正文和署名格式按选择顺序使用 {{staff1}}、{{staff2}}…{{staffN}}，未选到的位置输出空字符串。旧变量 {{translator}} / {{typesetter}} 分别作为 {{staff1}} / {{staff2}} 的别名继续生效，无需另建人员变量定义。</p>
+      <label style="font-size:12px;color:var(--muted);font-weight:600">变量定义（Key 需与 {{占位符}} 一致）</label>
+      <div id="tf-vars" style="margin-top:8px"></div>
+      <button class="btn sm" id="btn-add-var" style="margin:4px 0 16px">添加变量</button>
+      <div class="frow">
+        <button class="btn primary" id="btn-tpl-save">保存模板</button>
+        <button class="btn" id="btn-tpl-del" style="color:var(--danger)">删除模板</button>
+      </div>
+    </div>
+  </main>
+</div>
+<div id="toast-wrap"></div>
+<script src="/js/text-render.js?v=2.0.13"></script>
+<script src="/js/common.js?v=2.0.13"></script>
+<script src="/js/pages/template-edit.js?v=2.0.13"></script>
+</body>
+</html>

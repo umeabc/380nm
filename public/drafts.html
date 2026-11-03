@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>草稿区 · 380nm</title>
+<link rel="stylesheet" href="/css/app.css?v=2.0.13">
+</head>
+<body>
+<div class="sidebar" id="sidebar"></div>
+<div class="nav-backdrop" id="nav-backdrop"></div>
+<div class="main-shell">
+  <header class="topbar" id="topbar"></header>
+  <main class="page tile-page drafts-page" id="page">
+    <div class="tile-stack">
+      <section class="tile">
+        <div class="queue-selectbar" id="selectbar">
+          <div class="sb-left"><span class="sb-info" id="sbInfo" aria-live="polite">已选 0 条</span></div>
+          <div class="sb-right">
+            <div class="sb-bulk-group" role="group" aria-label="选择操作">
+              <button class="sb-bulk-btn" type="button" data-bulk="all">全选</button>
+              <button class="sb-bulk-btn" type="button" data-bulk="clear">清空</button>
+            </div>
+            <div class="sb-op-group">
+              <button class="btn sm primary" type="button" id="uploadBtn">上传图片</button>
+              <button class="btn sm" type="button" id="importBtn">导入 ZIP</button>
+            </div>
+            <div class="sb-template-group" role="group" aria-label="模板下载">
+              <select class="ctl" id="downloadTemplate" aria-label="下载模板选择"><option value="">请选择模板…</option></select>
+              <button type="button" class="link-btn sb-tpl-link" id="downloadTemplateLink" disabled>下载模板</button>
+            </div>
+            <button class="btn sm" type="button" id="deleteSelected" disabled>删除所选</button>
+            <input type="file" id="uploadFile" accept="image/*" multiple hidden>
+            <input type="file" id="importFile" accept=".zip" hidden>
+          </div>
+        </div>
+        <div class="import-panel" id="importPanel" hidden aria-live="polite"></div>
+      </section>
+      <div class="tile-stack" id="list" aria-live="polite"><div class="draft-empty tile">正在加载草稿…</div></div>
+    </div>
+  </main>
+</div>
+<div class="publish-mask" id="uploadMask" hidden>
+  <form class="publish-box" id="uploadForm" role="dialog" aria-modal="true" aria-labelledby="uploadTitle" tabindex="-1">
+    <h2 id="uploadTitle">上传图片 · 批量设置</h2>
+    <p class="foot-hint">每张图片创建一条草稿，整批使用相同模板和话题。</p>
+    <div class="field"><label for="uploadTemplate">模板（必选）</label><select class="ctl" id="uploadTemplate" required></select></div>
+    <div class="field"><label for="uploadTopic">话题（可选）</label><input class="ctl" id="uploadTopic" maxlength="100" placeholder="话题名称"></div>
+    <div class="draft-actions"><button class="btn" type="button" id="uploadCancel">取消</button><button class="btn primary" type="submit">下一步 · 选择图片</button></div>
+  </form>
+</div>
+<div id="toast-wrap"></div>
+<script src="/js/text-render.js?v=2.0.13"></script>
+<script src="/js/common.js?v=2.0.13"></script>
+<script src="/js/staff.js?v=2.0.13"></script>
+<script src="/js/pages/drafts.js?v=2.0.13"></script>
+</body>
+</html>

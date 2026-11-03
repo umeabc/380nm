@@ -1,0 +1,38 @@
+{
+  "base_url": {
+    "description": "380nm 服务地址",
+    "type": "string",
+    "default": "",
+    "hint": "例如 http://192.168.1.10:8787。填写 AstrBot 所在机器能访问的地址，不是 X 链接。末尾 /api 可省略。"
+  },
+  "username": {
+    "description": "380nm 登录用户名",
+    "type": "string",
+    "default": "",
+    "hint": "使用要接收草稿的 380nm 用户账号，队列也只查询该账号。"
+  },
+  "password": {
+    "description": "380nm 登录密码",
+    "type": "string",
+    "secret": true,
+    "default": ""
+  },
+  "allowed_users": {
+    "description": "允许操作的聊天用户 ID",
+    "type": "list",
+    "default": [],
+    "hint": "留空时仅 AstrBot 管理员可用；填写后仅允许名单内用户。所有授权用户共同操作上面配置的一个 380nm 账号。"
+  },
+  "allowed_groups": {
+    "description": "允许使用的群 ID",
+    "type": "list",
+    "default": [],
+    "hint": "留空时只允许私聊；群内还需通过用户授权。群内查询结果对群成员可见。"
+  },
+  "request_timeout": {
+    "description": "单次请求超时（秒）",
+    "type": "int",
+    "default": 300,
+    "hint": "范围 30–900。原图下载较慢时可调大；保存结果未确认时请先检查网页草稿。"
+  }
+}
