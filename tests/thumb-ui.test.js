@@ -24,7 +24,7 @@ test('表4全部小图接入，原图放大和外部边界保持', () => {
     assert.equal((text.match(/App\.imageSrc\(/g) || []).length, count);
     assert.doesNotMatch(text, /<img[^>]*src="\$\{esc\([^)]*\.url\)\}"/);
   }
-  assert.match(read('public/js/common.js'), /img\.src = im\.url;/);
+  assert.match(read('public/js/common.js'), /img\.src = imageSrc\(im, 0\);/);
   assert.match(read('public/js/pages/queue.js'), /App\.openPreview\(state\.jobs\.find/);
   assert.match(read('public/js/pages/job.js'), /href="\$\{esc\(i\.url\)\}"/);
   assert.doesNotMatch(read('public/js/pages/dashboard.js'), /<img/);

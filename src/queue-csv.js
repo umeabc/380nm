@@ -15,6 +15,7 @@
  * - 单元格超过 32000 字符：Excel 单元格上限 32767，导出时该任务整体失败。
  */
 
+const { sniffImageFormat } = require('./image-format');
 const CSV_HEADERS = ['标题', '计划时间', '类型', '账号', '模板', '正文', '话题', '配图', '提及'];
 const TASK_TYPE_SET = new Set(['原创', '翻嵌', '翻译', '转载']);
 const CSV_TYPE_SET = TASK_TYPE_SET; // 别名：routes 侧使用
@@ -217,15 +218,11 @@ const MAGIC_BY_EXT = {
   webp: 'webp', bmp: 'bmp', avif: 'avif'
 };
 
-/** 与 src/thumbs.js 同源的魔数嗅探（另补 avif ftyp 盒） */
+/** 复用基础位图检测，保留 CSV 独有的 AVIF 识别分支。 */
 function magicForImage(buf) {
+  const format = sniffImageFormat(buf);
+  if (format) return format;
   if (!buf || buf.length < 12) return null;
-  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return 'jpeg';
-  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return 'png';
-  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return 'gif';
-  if (buf[0] === 0x42 && buf[1] === 0x4D) return 'bmp';
-  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
-      buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x50 && buf[11] === 0x50) return 'webp';
   if (buf[0] === 0x66 && buf[1] === 0x74 && buf[2] === 0x79 && buf[3] === 0x70) {
     const brand = buf.slice(8, 12).toString('latin1');
     if (/^(avif|avis)/.test(brand)) return 'avif';

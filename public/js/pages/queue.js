@@ -1,6 +1,6 @@
 'use strict';
 (async function () {
-  const { $, $$, icon, esc, api, toast, fmtTime, snippet } = App;
+  const { $, $$, icon, esc, api, toast, snippet } = App;
 
   const STATUSES = [
     { k: 'all', label: '全部' }, { k: 'pending', label: '待发布' }, { k: 'publishing', label: '发布中' },

@@ -3,8 +3,6 @@
 const { describe, it, before, after } = require('node:test');
 const assert = require('node:assert');
 const express = require('express');
-const path = require('path');
-const fs = require('fs');
 const http = require('http');
 
 // 模拟环境

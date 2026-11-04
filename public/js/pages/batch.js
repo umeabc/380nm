@@ -1006,20 +1006,6 @@
     });
   }
 
-  // 提交统一使用行上最新的标题、正文和配图。
-  function buildJobItem(row) {
-    const cfg = rowConfig(row);
-    const tpl = state.templates.find(t => t.id === cfg.templateId);
-    const mainVar = (tpl?.variables || []).find(v => v.type === 'textarea');
-    return {
-      templateId: cfg.templateId, accountId: cfg.accountId,
-      ...(Array.isArray(row.staff) ? { staff: row.staff } : {}),
-      variables: { ...row.variables, title: row.title, credit: row.credit, ...(mainVar ? { [mainVar.key]: row.body ?? row.credit } : {}) },
-      images: row.selectedImages, topic: row.topic, title: row.title,
-      mentions: [], type: '原创', scheduledAt: row.scheduledAt
-    };
-  }
-
   let batchDialog = null;
   let frozenReadyRows = [];
 

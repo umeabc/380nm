@@ -80,7 +80,7 @@ async function page(options = {}) {
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../public/js/schedule.js'), 'utf8'), context);
   context.BatchSchedule = context.window.BatchSchedule;
   let source = fs.readFileSync(path.join(__dirname, '../public/js/pages/batch.js'), 'utf8');
-  source = source.replace(/\}\)\(\);\s*$/, 'window.testing = { renderRowEditor, state, saveDraft, debouncedSave, renderPeopleFields, makeCredit, templatePeople, peopleVariables, startParsing, finalizeParsing, replan, renderProgress, renderRow, editTitle, buildJobItem, timeOptions, changeTime, renderTable, bindRowEvents, openTimePopover, closeTimePopover, showConfirm, confirmEnqueue, abortParsing }; })();');
+  source = source.replace(/\}\)\(\);\s*$/, 'window.testing = { renderRowEditor, state, saveDraft, debouncedSave, renderPeopleFields, makeCredit, templatePeople, peopleVariables, startParsing, finalizeParsing, replan, renderProgress, renderRow, editTitle, timeOptions, changeTime, renderTable, bindRowEvents, openTimePopover, closeTimePopover, showConfirm, confirmEnqueue, abortParsing }; })();');
   context.TextRender = require('../public/js/text-render');
   context.Staff = require('../public/js/staff');
   await vm.runInContext(source, context);
@@ -331,7 +331,10 @@ test('双击标题保存发布生效，manualTitle=true 且重排不覆盖', asy
   assert.equal(count.textContent, '4/20');
   input.listeners.keydown({ key: 'Enter', preventDefault() {} });
   assert.equal(a.title, '手动标题'); assert.equal(a.manualTitle, true);
-  assert.equal(p.buildJobItem(a).title, '手动标题');
+  await p.saveDraft();
+  const saved = p.apiCalls.filter(call => call.method === 'PUT').at(-1).body.rows.find(item => item.id === a.id);
+  assert.equal(saved.title, '手动标题');
+  assert.equal(saved.manualTitle, true);
   p.state.rows = [a]; p.replan();
   assert.equal(a.title, '手动标题');
   // Esc 不保存，失焦保存；未手动标题仍按排期生成。
@@ -616,12 +619,25 @@ test('pasting links then immediately starting parses current textarea before deb
   assert.equal(p.state.rows.map(row => row.url).join(','), 'https://x.com/artist/status/123,https://www.pixiv.net/artworks/456');
 });
 
-test('batch original author survives buildJobItem and refreshes stale signature credit', async () => {
+test('batch original author survives draft save before enqueue and refreshes stale signature credit', async () => {
   const p = await page();
   const tpl = { id: 'tpl', category: 'batch', content: '{{credit}}\n{{body}}/{{OrigAuthor}}', signatureFormat: 'By {{origAuthor}} @{{handle}}', variables: [{ key: 'body', type: 'textarea' }] };
   p.state.templates = [tpl];
-  const item = p.buildJobItem({ ...row('orig'), variables: { origAuthor: 'New', handle: 'artist' }, credit: 'By Old', body: 'Body' });
-  assert.equal(require('../src/render').renderBody(tpl, item.variables), 'By New @artist\nBody/New');
+  p.state.rows = [{ ...row('orig'), variables: { origAuthor: 'New', handle: 'artist' }, credit: 'By Old', body: 'Body' }];
+  p.showConfirm();
+  await p.confirmEnqueue();
+  const put = p.apiCalls.find(call => call.method === 'PUT');
+  const item = put.body.rows[0];
+  assert.equal(item.variables.origAuthor, 'New');
+  assert.equal(item.variables.handle, 'artist');
+  assert.equal(item.body, 'Body');
+  assert.equal(item.credit, 'By Old');
+  const post = p.apiCalls.find(call => call.method === 'POST');
+  assert.equal(post.url, '/api/batch-draft/enqueue');
+  assert.equal(post.body.rowIds.join(','), 'orig');
+  assert.equal(post.body.revision, put.body.revision + 1);
+  assert.ok(p.apiCalls.indexOf(put) < p.apiCalls.indexOf(post));
+  assert.equal(require('../src/render').renderBody(tpl, { ...item.variables, body: item.body, credit: item.credit }), 'By New @artist\nBody/New');
   assert.equal(p.makeCredit({ author: 'Artist', handle: 'artist' }, tpl, { origAuthor: 'Edited' }), 'By Edited @artist');
 });
 

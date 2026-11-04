@@ -117,10 +117,6 @@ class CookieRefreshService {
     try { await this.store.flushNow(); } catch { /* 原存储错误已红显，不能继续旋转。 */ }
     if (!previous || previous.code !== error.code || previous.message !== error.message) await this.store.addLog('warn', `账号 ${id}：${error.message}`, { userId: a.userId });
   }
-  async resumePending(id) {
-    const result = await this.checkIfDue(id);
-    return result === 'refreshed' ? 'confirmed' : result === 'stale' ? 'stale' : 'pending';
-  }
   async resumeLocked(id, signal) {
     const r = this.records[id], a = this.store.getAccount(id);
     if (!r || !a) return 'stale';

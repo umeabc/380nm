@@ -2,12 +2,11 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const crypto = require('crypto');
-const fsp = require('fs/promises');
 const { genId, sanitizeUser } = require('./store');
 const { renderTemplate, renderBody, extractVariableKeys } = require('./render');
 const Staff = require('./staff');
 const { templateColumns } = require('./template-columns');
-const { TASK_TYPES, TYPE_SLOTS, SLOT_LABELS, slotSegment } = require('./templates');
+const { TASK_TYPES, TYPE_SLOTS, SLOT_LABELS } = require('./templates');
 const {
   hashPassword, verifyPassword, attachUser, requireAuth, requireAdmin
 } = require('./auth');
@@ -18,14 +17,12 @@ const upload = multer({
 });
 
 const { importFromUrl, parseWork, parseSource, testXCredentials, ImportError } = require('./importers');
-const { buildZip } = require('./zip');
-const { unzip } = require('./zip');
+const { buildZip, unzip } = require('./zip');
 const { decodeMojibakeName } = require('./filename');
 const {
   CSV_HEADERS, CSV_TYPE_SET, csvRow, sanitizeZipName, jobToCsvCells, buildQueueCsv, parseQueueCsv,
   resolveCsvTime, magicForImage, imageExtMatchesMagic, contentTypeForMagic
 } = require('./queue-csv');
-const { cookieErrorText } = require('./cookie-monitor');
 const { mergeLibraryMentions } = require('./mentions');
 
 const { thumbnailConfig, validateKey } = require('./thumb-config');
@@ -669,10 +666,9 @@ module.exports = function createRoutes(ctx) {
     };
 
     try {
-      const { work, images } = await parseWork(url, store.getSettings(), onProgress);
-      const capped = images.slice(0, MAX_IMPORT_IMAGES);
+      const { work, images, total = images.length } = await parseWork(url, store.getSettings(), onProgress, MAX_IMPORT_IMAGES);
       const saved = [];
-      for (const it of capped) {
+      for (const it of images) {
         if (!it.buffer || !it.buffer.length) continue;
         const { key, url: imgUrl } = await storage.put(it.buffer, it.name, it.contentType);
         const meta = {
@@ -684,7 +680,7 @@ module.exports = function createRoutes(ctx) {
         saved.push(meta);
       }
       await store.addLog('info', `链接解析：${work.title} → ${saved.length} 张原图入库（${url.slice(0, 80)}）`, { userId: req.user.id });
-      send({ type: 'done', step: 4, work, images: saved, total: images.length });
+      send({ type: 'done', step: 4, work, images: saved, total });
       res.end();
     } catch (e) {
       const code = (e && e.code && PARSE_ERRORS[e.code]) ? e.code : 'network';
@@ -723,7 +719,7 @@ module.exports = function createRoutes(ctx) {
       }
       let items;
       try {
-        items = await importFromUrl(url, store.getSettings());
+        items = await importFromUrl(url, store.getSettings(), MAX_IMPORT_IMAGES);
       } catch (e) {
         if (e instanceof ImportError) return res.status(400).json({ error: e.message });
         throw e;
@@ -731,9 +727,9 @@ module.exports = function createRoutes(ctx) {
       if (!Array.isArray(items) || !items.length) {
         return res.status(400).json({ error: '未从该链接获取到图片' });
       }
-      const capped = items.slice(0, MAX_IMPORT_IMAGES);
+      const total = items.total ?? items.length;
       const saved = [];
-      for (const it of capped) {
+      for (const it of items) {
         if (!it.buffer || !it.buffer.length) continue;
         const { key, url: imgUrl } = await storage.put(it.buffer, it.name, it.contentType);
         const meta = {
@@ -751,9 +747,9 @@ module.exports = function createRoutes(ctx) {
       }
       if (!saved.length) return res.status(400).json({ error: '导入失败：没有可用图片' });
       await store.addLog('info',
-        `链接导入 ${saved.length} 张图片${items.length > MAX_IMPORT_IMAGES ? `（超出上限，已截取前 ${MAX_IMPORT_IMAGES} 张）` : ''}: ${url.slice(0, 100)}`,
+        `链接导入 ${saved.length} 张图片${total > MAX_IMPORT_IMAGES ? `（超出上限，已截取前 ${MAX_IMPORT_IMAGES} 张）` : ''}: ${url.slice(0, 100)}`,
         { userId: req.user.id });
-      res.json({ images: saved, total: items.length });
+      res.json({ images: saved, total });
     } catch (e) {
       next(e);
     }
@@ -1815,6 +1811,7 @@ module.exports = function createRoutes(ctx) {
       }
       // 全包预检：任何一张图片缺失或归属不符 → 422，不生成残缺 zip
       const keyToName = allocZipNames([], jobs);
+      const imageReads = new Map(); // 仅本次请求复用读取结果，归属仍逐任务校验。
       for (const job of jobs) {
         for (const img of job.images || []) {
           const rec = store.listImages().find((i) => i.key === img.key);
@@ -1825,7 +1822,7 @@ module.exports = function createRoutes(ctx) {
             return res.status(422).json({ error: `任务「${job.title || job.id}」的图片 ${img.key} 归属与任务所有者不符，无法导出` });
           }
           try {
-            await storage.get(img.key);
+            if (!imageReads.has(img.key)) imageReads.set(img.key, await storage.get(img.key));
           } catch (e) {
             return res.status(422).json({ error: `任务「${job.title || job.id}」的图片 ${img.key} 读取失败，无法导出` });
           }
@@ -1855,7 +1852,7 @@ module.exports = function createRoutes(ctx) {
         for (const img of job.images || []) {
           const name = keyToName.get(img.key);
           if (entries.some((e) => e.name === 'images/' + name)) continue;
-          const got = await storage.get(img.key);
+          const got = imageReads.get(img.key);
           entries.push({ name: 'images/' + name, buffer: got.buffer, mtime: new Date(img.createdAt || Date.now()) });
         }
       }
@@ -1972,7 +1969,6 @@ module.exports = function createRoutes(ctx) {
           hour: '2-digit', minute: '2-digit', hour12: false
         }).replace(/\//g, '-')}`;
         let folder = null;
-        const rowImages = []; // 失败行回滚用：本次导入新增的图片 key
         try {
           const f = req.file;
           if (!f || !f.buffer || !f.buffer.length) {

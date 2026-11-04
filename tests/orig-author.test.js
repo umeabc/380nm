@@ -20,7 +20,9 @@ test('前端原作者编辑、发布页共用作者说明及模板下载控件�
   const batch = read('public/js/pages/batch.js');
   assert.match(batch, /data-field="origAuthor"/);
   assert.match(batch, /origAuthor: e\.target\.value/);
-  assert.match(batch, /variables: \{ \.\.\.row\.variables/);
+  assert.match(batch, /credit: r\.credit, body: r\.body, variables: r\.variables/);
+  assert.match(batch, /api\('PUT', '\/api\/batch-draft', draftBody\(\)\)/);
+  assert.match(batch, /api\('POST', '\/api\/batch-draft\/enqueue', \{ revision: state\.revision, rowIds \}\)/);
   const release = read('public/js/pages/release.js');
   assert.match(release, /credit: state\.credit\.text, origAuthor: state\.credit\.text/);
   assert.match(release, /\['origauthor', 'credit'\]\.includes/);

@@ -16,4 +16,4 @@ function extractVariableKeys(content) {
   return keys;
 }
 
-module.exports = { renderTemplate, renderBody, extractVariableKeys, resolveOrigAuthor: TextRender.resolveOrigAuthor };
+module.exports = { renderTemplate, renderBody, extractVariableKeys };

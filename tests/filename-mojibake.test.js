@@ -44,10 +44,10 @@ describe('decodeMojibakeName', () => {
 });
 
 describe('scripts/fix-image-names.js', () => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fixnames-'));
-  const dbFile = path.join(tmp, 'db.json');
-
-  it('dry-run 打印统计且不写入；--apply 修复 images 与 jobs 快照并备份', () => {
+  it('dry-run 打印统计且不写入；--apply 修复 images 与 jobs 快照并备份', t => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fixnames-'));
+    t.after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+    const dbFile = path.join(tmp, 'db.json');
     const moji = Buffer.from('测试图片.jpg', 'utf8').toString('latin1');
     const db = {
       images: [
@@ -80,8 +80,9 @@ describe('scripts/fix-image-names.js', () => {
     assert.strictEqual(after.jobs[0].images[0].url, '/u');
   });
 
-  it('无可修复时 --apply 不写不备份', () => {
+  it('无可修复时 --apply 不写不备份', t => {
     const t2 = fs.mkdtempSync(path.join(os.tmpdir(), 'fixnames2-'));
+    t.after(() => fs.rmSync(t2, { recursive: true, force: true }));
     fs.writeFileSync(path.join(t2, 'db.json'), JSON.stringify({
       images: [{ key: 'a', name: 'ok.jpg' }], jobs: []
     }));

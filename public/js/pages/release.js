@@ -1,6 +1,6 @@
 'use strict';
 (async function () {
-  const { $, $$, icon, esc, api, toast, renderText, debounce, toLocalInput, publishedImageMap, pubTip, pendingImageMap, pendTip } = App;
+  const { $, $$, icon, esc, api, toast, debounce, toLocalInput, publishedImageMap, pubTip, pendingImageMap, pendTip } = App;
 
   const IMG_PER_PAGE = 10;
   const FETCH_STEPS = ['识别平台', '请求作品页', '抓取原图', '提取作者信息'];

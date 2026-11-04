@@ -1,10 +1,11 @@
 'use strict';
 (async function () {
-  const { $, $$, icon, esc, api, toast, fmtShort, fmtTime } = App;
+  const { $, $$, icon, esc, api, toast, fmtTime } = App;
 
   App.boot({
     active: 'dashboard',
     title: '总览',
+    providesBadge: true,
     ready: async () => {
       // 渲染静态图标
       $$('.stat-icon').forEach((el) => { el.innerHTML = icon(el.dataset.ic, 17); });
@@ -66,8 +67,7 @@
         $('#st-last').onclick = last && last.dynamicUrl
           ? () => window.open(last.dynamicUrl, '_blank')
           : () => { location.href = '/queue'; };
-        App.state.pendingCount = c.pending;
-        App.refreshBadge();
+        App.setBadge(c.pending);
       }
 
       await refresh();

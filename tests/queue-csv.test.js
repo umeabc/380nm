@@ -4,7 +4,8 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert');
 const {
   CSV_HEADERS, buildQueueCsv, parseQueueCsv, jobToCsvCells,
-  formatCsvTime, resolveCsvTime, sanitizeZipName, csvGuard, csvUnguard, parseCsv
+  formatCsvTime, resolveCsvTime, sanitizeZipName, csvGuard, csvUnguard, parseCsv,
+  magicForImage, imageExtMatchesMagic, contentTypeForMagic
 } = require('../src/queue-csv');
 
 describe('queue.csv 编解码', () => {
@@ -132,5 +133,54 @@ describe('queue.csv 编解码', () => {
     assert.strictEqual(rows.length, 2);
     assert.strictEqual(rows[0][1], 'b\nc');
     assert.strictEqual(rows[1][2], 'g');
+  });
+});
+
+describe('CSV 图片格式检测', () => {
+  it('S12：12 字节 RIFF/WEBP 头在 CSV 导入侧判为 webp', () => {
+    const header = Buffer.from('524946460400000057454250', 'hex');
+    assert.strictEqual(magicForImage(header), 'webp');
+    assert.strictEqual(imageExtMatchesMagic('.WEBP', header), true);
+    assert.strictEqual(imageExtMatchesMagic('png', header), false);
+    assert.strictEqual(contentTypeForMagic(magicForImage(header)), 'image/webp');
+  });
+
+  it('旧错误 WEPP 头、截断头和非导入格式仍拒绝', () => {
+    for (const header of [
+      Buffer.from('524946460400000057455050', 'hex'),
+      Buffer.from('5249464604000000574542', 'hex'),
+      Buffer.from('<svg xmlns="http://www.w3.org/2000/svg">'),
+      Buffer.from('49492a000000000000000000', 'hex'),
+      Buffer.from('000000206674797068656963', 'hex')
+    ]) {
+      assert.strictEqual(magicForImage(header), null);
+      assert.strictEqual(imageExtMatchesMagic('webp', header), false);
+    }
+    assert.strictEqual(magicForImage(null), null);
+  });
+
+  it('原有 JPG/JPEG、PNG、GIF、BMP 扩展名白名单保持', () => {
+    for (const [format, hex, extensions] of [
+      ['jpeg', 'ffd8ffe00000000000000000', ['jpg', 'jpeg']],
+      ['png', '89504e470d0a1a0a00000000', ['png']],
+      ['gif', '474946383961000000000000', ['gif']],
+      ['bmp', '424d00000000000000000000', ['bmp']]
+    ]) {
+      const header = Buffer.from(hex, 'hex');
+      assert.strictEqual(magicForImage(header), format);
+      for (const ext of extensions) assert.strictEqual(imageExtMatchesMagic(ext, header), true);
+      assert.strictEqual(imageExtMatchesMagic('svg', header), false);
+    }
+  });
+
+  it('CSV 专有 AVIF 分支保留，不扩大基础位图检测范围', () => {
+    const { sniffImageFormat } = require('../src/image-format');
+    // 保留现有 CSV 分支的输入约定，本轮只修复 WebP 魔数。
+    for (const brand of ['avif', 'avis']) {
+      const header = Buffer.concat([Buffer.from('ftyp'), Buffer.alloc(4), Buffer.from(brand)]);
+      assert.strictEqual(magicForImage(header), 'avif');
+      assert.strictEqual(imageExtMatchesMagic('avif', header), true);
+      assert.strictEqual(sniffImageFormat(header), null);
+    }
   });
 });

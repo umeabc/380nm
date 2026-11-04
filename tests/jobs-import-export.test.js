@@ -228,6 +228,68 @@ describe('POST /api/jobs/export 与 GET /api/jobs/import-template', () => {
     assert.deepStrictEqual(JSON.parse(rows[1].images), ['同.jpg', '同(2).jpg']);
   });
 
+  it('导出预检与打包按 key 复用原图，每个请求重新读取', async (t) => {
+    const image = { key: 'img1', name: '共享.png', url: '' };
+    store.data.jobs = [
+      mkJob('usr_test', { id: 'shared-a', images: [image] }),
+      mkJob('usr_test', { id: 'shared-b', images: [image] })
+    ];
+    const originalGet = storage.get.bind(storage);
+    const calls = [];
+    t.mock.method(storage, 'get', async key => { calls.push(key); return originalGet(key); });
+    const originalBytes = storage.files.img1;
+    t.after(() => { storage.files.img1 = originalBytes; });
+    const exportShared = () => request('POST', '/api/jobs/export',
+      JSON.stringify({ ids: ['shared-a', 'shared-b'] }), cookies.test, { 'Content-Type': 'application/json' });
+
+    const first = await exportShared();
+    assert.strictEqual(first.status, 200);
+    assert.deepStrictEqual(calls, ['img1']);
+    const firstImages = unzip(first.buf).filter(e => e.name.startsWith('images/'));
+    assert.strictEqual(firstImages.length, 1);
+    assert.deepStrictEqual(firstImages[0].buffer, originalBytes);
+
+    const changedBytes = Buffer.from('updated-storage-content');
+    storage.files.img1 = changedBytes;
+    const second = await exportShared();
+    assert.strictEqual(second.status, 200);
+    assert.deepStrictEqual(calls, ['img1', 'img1']);
+    assert.deepStrictEqual(unzip(second.buf).find(e => e.name === 'images/共享.png').buffer, changedBytes);
+  });
+
+  it('已缓存图片仍逐任务检查归属，管理员跨用户导出整包失败', async (t) => {
+    const image = { key: 'img1', name: '共享.png', url: '' };
+    store.data.jobs = [
+      mkJob('usr_test', { id: 'owner-ok', images: [image] }),
+      mkJob('usr_other', { id: 'owner-bad', title: '越权图片任务', images: [image] })
+    ];
+    const originalGet = storage.get.bind(storage);
+    const calls = [];
+    t.mock.method(storage, 'get', async key => { calls.push(key); return originalGet(key); });
+    const res = await request('POST', '/api/jobs/export?scope=all',
+      JSON.stringify({ ids: ['owner-ok', 'owner-bad'] }), cookies.admin, { 'Content-Type': 'application/json' });
+    assert.strictEqual(res.status, 422);
+    assert.match(res.body.error, /越权图片任务.*归属/);
+    assert.match(res.headers['content-type'], /application\/json/);
+    assert.deepStrictEqual(calls, ['img1']);
+  });
+
+  it('已缓存部分原图后其他图片读取失败仍不生成残缺 ZIP', async (t) => {
+    store.data.jobs = [
+      mkJob('usr_test', { id: 'read-ok', images: [{ key: 'img1', name: '正常.png' }] }),
+      mkJob('usr_test', { id: 'read-bad', title: '读取失败任务', images: [{ key: 'img_lost', name: '丢失.png' }] })
+    ];
+    const originalGet = storage.get.bind(storage);
+    const calls = [];
+    t.mock.method(storage, 'get', async key => { calls.push(key); return originalGet(key); });
+    const res = await request('POST', '/api/jobs/export',
+      JSON.stringify({ ids: ['read-ok', 'read-bad'] }), cookies.test, { 'Content-Type': 'application/json' });
+    assert.strictEqual(res.status, 422);
+    assert.match(res.body.error, /读取失败任务.*读取失败/);
+    assert.match(res.headers['content-type'], /application\/json/);
+    assert.deepStrictEqual(calls, ['img1', 'img_lost']);
+  });
+
   it('图片缺失 → 422 且不生成 zip', async () => {
     store.data.jobs = [mkJob('usr_test', {
       id: 'jlost', title: 'x', images: [{ key: 'img_lost', name: '丢的.jpg', url: '' }]

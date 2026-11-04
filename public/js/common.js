@@ -46,15 +46,6 @@ window.App = (function () {
     const d = new Date(iso);
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
-  function fmtShort(iso) {
-    const d = new Date(iso), now = new Date();
-    const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    const day = (x) => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
-    if (day(d) === day(now)) return '今天 ' + hm;
-    const tm = new Date(now); tm.setDate(tm.getDate() + 1);
-    if (day(d) === day(tm)) return '明天 ' + hm;
-    return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${hm}`;
-  }
   function toLocalInput(d) {
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
@@ -69,9 +60,6 @@ window.App = (function () {
   function snippet(s, n) {
     s = String(s || '').replace(/\s+/g, ' ').trim();
     return s.length > n ? s.slice(0, n) + '...' : s;
-  }
-  function renderText(content, vars) {
-    return TextRender.render(content, vars);
   }
 
   function debounce(fn, ms) {
@@ -372,9 +360,12 @@ window.App = (function () {
   async function refreshBadge() {
     try {
       const jobs = (await api('GET', '/api/jobs')).jobs;
-      state.pendingCount = jobs.filter((j) => j.status === 'pending').length;
-      updateBadge();
+      setBadge(jobs.filter((j) => j.status === 'pending').length);
     } catch (e) { /* ignore */ }
+  }
+  function setBadge(count) {
+    state.pendingCount = count;
+    updateBadge();
   }
   function closeDrawer() {
     const sb = $('#sidebar');
@@ -548,13 +539,13 @@ window.App = (function () {
     document.title = (cfg.title ? cfg.title + ' · ' : '') + '380nm';
     renderShell(cfg.active, cfg.title);
     startTicker();
-    refreshBadge();
+    if (!cfg.providesBadge) refreshBadge();
     if (cfg.ready) await cfg.ready(user);
     if (location.pathname === '/release') cardVisibility();
   }
 
   // 仅生成展示地址，绝不写回发布/导出使用的原图对象。
-  const pv = { images: [], idx: 0, job: null };
+  const pv = { images: [], idx: 0, source: null };
   function ensurePvModal() {
     let el = document.getElementById('pv-modal');
     if (el) return el;
@@ -587,10 +578,11 @@ window.App = (function () {
     });
     return el;
   }
-  function openPreview(job, idx) {
-    const imgs = job?.images || [];
+  // 任务、草稿和图库均传入 { images: 图片元数据数组 }，不依赖任务 ID。
+  function openPreview(source, idx) {
+    const imgs = source?.images || [];
     if (!imgs.length) { toast('该任务没有配图', 'warn'); return; }
-    pv.job = job;
+    pv.source = source;
     pv.images = imgs.slice();
     pv.idx = Math.max(0, Math.min(Number(idx) || 0, pv.images.length - 1));
     ensurePvModal().style.display = '';
@@ -605,9 +597,9 @@ window.App = (function () {
     const im = pv.images[pv.idx];
     if (!im) return;
     const img = document.getElementById('pv-img');
-    img.src = im.url;
-    document.getElementById('pv-imgwrap').href = im.url;
-    const who = pv.job ? (pv.job.templateName || pv.job.accountName || '') : '';
+    img.src = imageSrc(im, 0);
+    document.getElementById('pv-imgwrap').href = imageSrc(im, 0);
+    const who = pv.source ? (pv.source.templateName || pv.source.accountName || '') : '';
     document.getElementById('pv-title').textContent = `${who ? who + ' · ' : ''}配图 ${pv.idx + 1} / ${pv.images.length}${im.name ? ' · ' + im.name : ''}`;
     document.getElementById('pv-thumbs').innerHTML = pv.images.map((x, i) => `<button class="pv-thumb ${i === pv.idx ? 'on' : ''}" type="button" data-pv-idx="${i}" title="${esc(x.name || '')}"><img referrerpolicy="no-referrer" src="${esc(imageSrc(x, 240))}" alt="" loading="lazy"></button>`).join('');
   }
@@ -619,16 +611,17 @@ window.App = (function () {
   }
 
   function imageSrc(image, w = 240) {
-    if (![240, 480].includes(w)) throw new Error('缩略尺寸仅支持240/480');
     const url = image && image.url || '';
+    if (w === 0) return url; // 原图保留存储后端提供的地址。
+    if (![240, 480].includes(w)) throw new Error('缩略尺寸仅支持240/480');
     if (!image || !image.key || /^(blob:|data:)/i.test(url)) return url;
     return '/api/thumb/' + image.key.split('/').map(encodeURIComponent).join('/') + '?w=' + w;
   }
 
   return {
     openPreview, imageSrc, cardVisibility,
-    $, $$, icon, esc, pad, fmtTime, fmtShort, toLocalInput, fmtDuration, snippet, renderText, debounce,
-    api, toast, state, NAV, renderShell, refreshBadge, closeDrawer, openPwModal,
+    $, $$, icon, esc, pad, fmtTime, toLocalInput, fmtDuration, snippet, debounce,
+    api, toast, state, NAV, renderShell, setBadge, refreshBadge, closeDrawer, openPwModal,
     publishedImageMap, pubTip, pendingImageMap, pendTip, uploadImages, boot
   };
 })();

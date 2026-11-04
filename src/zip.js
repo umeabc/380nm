@@ -85,8 +85,6 @@ function buildZip(entries) {
   return Buffer.concat([...localParts, central, eocd]);
 }
 
-module.exports = { buildZip };
-
 /* ===================== 安全解包 =====================
  * 从 EOCD 定位中央目录，逐条核对 local header 与方法、名称、CRC、实际长度；
  * 仅支持 store(0) 与 deflate(8)；拒绝 ZIP64 / 多卷 / 加密 / 符号链接 / 危险路径。

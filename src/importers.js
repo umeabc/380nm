@@ -229,7 +229,7 @@ async function downloadImage(url, { proxy, headers = {}, timeout = 60000, userAg
 }
 
 /* ---------------- Pixiv ---------------- */
-async function importPixiv(url, { session = '', proxy = '', timeout = 60000 } = {}) {
+async function importPixiv(url, { session = '', proxy = '', timeout = 60000, maxImages = Infinity } = {}) {
   const m = PIXIV_ARTWORK_RE.exec(url);
   const id = m && m[1];
   if (!id) throw new ImportError('无法解析 Pixiv 作品地址，请确认是 https://www.pixiv.net/artworks/<id> 格式');
@@ -268,6 +268,8 @@ async function importPixiv(url, { session = '', proxy = '', timeout = 60000 } = 
   if (!urls.length) throw new ImportError('该作品未找到原图');
 
   const out = [];
+  out.total = urls.length;
+  urls = urls.slice(0, maxImages);
   for (let i = 0; i < urls.length; i++) {
     const dl = await downloadImage(urls[i], {
       proxy,
@@ -284,7 +286,7 @@ async function importPixiv(url, { session = '', proxy = '', timeout = 60000 } = 
 }
 
 /* ---------------- X (Twitter) ---------------- */
-async function importTwitter(url, { authToken = '', ct0 = '', proxy = '', timeout = 60000 } = {}) {
+async function importTwitter(url, { authToken = '', ct0 = '', proxy = '', timeout = 60000, maxImages = Infinity } = {}) {
   const m = TWEET_URL_RE.exec(url);
   const id = m && m[1];
   if (!id) throw new ImportError('无法解析推文地址，请确认是 https://x.com/<用户>/status/<id> 格式');
@@ -333,8 +335,10 @@ async function importTwitter(url, { authToken = '', ct0 = '', proxy = '', timeou
   if (!mediaUrls.length) throw new ImportError('该推文中未找到图片（纯文字推文，或受限内容需在全站设置里配置 auth_token/ct0）');
 
   const out = [];
-  for (let i = 0; i < mediaUrls.length; i++) {
-    let u = mediaUrls[i];
+  out.total = mediaUrls.length;
+  const downloadUrls = mediaUrls.slice(0, maxImages);
+  for (let i = 0; i < downloadUrls.length; i++) {
+    let u = downloadUrls[i];
     // 只对正文图片加 name=orig 取原图（头像等 URL 加了会 404）
     if (/pbs\.twimg\.com\/media\//.test(u) && !/[?&]name=/.test(u)) u += (u.includes('?') ? '&' : '?') + 'name=orig';
     const headers = { referer: 'https://x.com/' };
@@ -361,7 +365,8 @@ async function importExternal(url, { proxy = '', timeout = 60000 } = {}) {
 }
 
 /* ---------------- 统一入口 ---------------- */
-async function importFromUrl(url, settings = {}) {
+// 保留图片数组返回值；total 为截取前可下载的原图数量。
+async function importFromUrl(url, settings = {}, maxImages = Infinity) {
   const u = String(url || '').trim();
   if (!u) throw new ImportError('请输入链接');
   rejectRemovedSource(u);
@@ -369,7 +374,8 @@ async function importFromUrl(url, settings = {}) {
     session: settings.pixivSession || '',
     authToken: settings.twitterAuth || '',
     ct0: settings.twitterCt0 || '',
-    proxy: settings.importProxy || ''
+    proxy: settings.importProxy || '',
+    maxImages
   };
   if (PIXIV_ARTWORK_RE.test(u)) return importPixiv(u, opts);
   if (TWEET_HOST_RE.test(u)) return importTwitter(u, opts);
@@ -407,14 +413,14 @@ module.exports = { importFromUrl, ImportError };
 
 /* =====================================================================
  * 作品解析（PRD F-D1~F-D3）：解析 X / Pixiv 作品页，返回作品元数据 + 原图
- * parseWork(url, settings, onProgress) → { work, images }
+ * parseWork(url, settings, onProgress, maxImages) → { work, images, total }
  * onProgress(stepIndex, subText) 驱动四步进度：识别平台/请求作品页/抓取原图/提取作者信息
  * ===================================================================== */
 
 const PARSE_X_RE = /^(?:https?:\/\/)?(?:www\.)?(?:x\.com|twitter\.com)\/([A-Za-z0-9_]{1,15})\/status\/(\d+)/i;
 const PARSE_PIXIV_RE = /^(?:https?:\/\/)?(?:www\.)?pixiv\.net\/(?:en\/)?artworks\/(\d+)/i;
 
-async function parseWork(url, settings = {}, onProgress = () => {}) {
+async function parseWork(url, settings = {}, onProgress = () => {}, maxImages = Infinity) {
   const u = String(url || '').trim();
   const mX = PARSE_X_RE.exec(u);
   const mP = PARSE_PIXIV_RE.exec(u) || PIXIV_ARTWORK_RE.exec(u);
@@ -431,7 +437,8 @@ async function parseWork(url, settings = {}, onProgress = () => {}) {
     authToken: settings.twitterAuth || '',
     ct0: settings.twitterCt0 || '',
     proxy: settings.importProxy || '',
-    timeout: 8000
+    timeout: 8000,
+    maxImages
   };
 
   if (platform === 'pixiv') {
@@ -441,7 +448,7 @@ async function parseWork(url, settings = {}, onProgress = () => {}) {
 }
 
 async function parsePixivWork(url, workId, opts, onProgress) {
-  const { session, proxy, timeout } = opts;
+  const { session, proxy, timeout, maxImages } = opts;
   const f = makeFetch(proxy);
   const headers = { 'user-agent': UA, referer: 'https://www.pixiv.net/', accept: 'application/json' };
   if (session.trim()) headers.cookie = 'PHPSESSID=' + session.trim();
@@ -480,6 +487,8 @@ async function parsePixivWork(url, workId, opts, onProgress) {
 
   const title = body.illustTitle || '';
   const images = [];
+  const total = urls.length;
+  urls = urls.slice(0, maxImages);
   for (let i = 0; i < urls.length; i++) {
     const dl = await downloadImage(urls[i], { proxy, headers: { referer: 'https://www.pixiv.net/' }, timeout: 60000 });
     const dims = imageDims(dl.buffer, dl.contentType);
@@ -490,7 +499,7 @@ async function parsePixivWork(url, workId, opts, onProgress) {
       w: dims ? dims.w : 0, h: dims ? dims.h : 0, fmt: fmtOfCt(dl.contentType)
     });
     if (i === 0) {
-      onProgress(2, (dims ? `${dims.w} × ${dims.h}` : '原图') + ' · ' + fmtOfCt(dl.contentType) + (urls.length > 1 ? ` · 共 ${urls.length} 张` : ''));
+      onProgress(2, (dims ? `${dims.w} × ${dims.h}` : '原图') + ' · ' + fmtOfCt(dl.contentType) + (total > 1 ? ` · 共 ${total} 张` : '') + (total > urls.length ? `（已截取前 ${urls.length} 张）` : ''));
     }
   }
   onProgress(3, '作者：' + (body.userName || '未知'));
@@ -504,7 +513,8 @@ async function parsePixivWork(url, workId, opts, onProgress) {
       pixivId: String(body.userId || ''),
       url
     },
-    images
+    images,
+    total
   };
 }
 
@@ -664,13 +674,12 @@ async function testXCredentials({ authToken = '', ct0 = '', proxy = '', timeout 
 }
 
 async function parseXWork(url, workId, opts, onProgress) {
-  const { authToken, ct0, proxy, timeout } = opts;
+  const { authToken, ct0, proxy, timeout, maxImages } = opts;
   const f = makeFetch(proxy);
   let data = null;
   xDiag(workId, `start creds=${Boolean(authToken && ct0)} proxy=${proxy ? 'yes' : 'no'}`);
 
   // 有凭据：GraphQL 主路（受限推文唯一可行路径）；失败且非确定性错误时落 syndication 兜底
-  let gqlBlocked = false;
   let tombstoneSeen = false; // 是否观察到墓碑（删推/不可见），用于给出准确文案
   if (authToken && ct0) {
     try {
@@ -686,7 +695,6 @@ async function parseXWork(url, workId, opts, onProgress) {
       } else {
         xDiag(workId, 'gql=tombstone-or-null');
         tombstoneSeen = true;
-        gqlBlocked = true; // tombstone：落 syndication 兜底（未登录可见的极少数情况）
       }
     } catch (e) {
       if (e instanceof ImportError && (e.code === 'restricted' || e.message.includes('频控'))) {
@@ -694,7 +702,6 @@ async function parseXWork(url, workId, opts, onProgress) {
         throw e; // 凭据/频控类确定性错误直接抛
       }
       xDiag(workId, `gql=error code=${(e && e.code) || '?'} msg=${String((e && e.message) || e).slice(0, 60)}`);
-      gqlBlocked = true;
     }
   } else {
     xDiag(workId, 'gql=skipped(no-creds)');
@@ -749,8 +756,10 @@ async function parseXWork(url, workId, opts, onProgress) {
 
   const title = (text || '').replace(/\s+/g, ' ').trim().slice(0, 30) || 'X 推文';
   const images = [];
-  for (let i = 0; i < mediaUrls.length; i++) {
-    let u = mediaUrls[i];
+  const total = mediaUrls.length;
+  const downloadUrls = mediaUrls.slice(0, maxImages);
+  for (let i = 0; i < downloadUrls.length; i++) {
+    let u = downloadUrls[i];
     if (/pbs\.twimg\.com\/media\//.test(u) && !/[?&]name=/.test(u)) u += (u.includes('?') ? '&' : '?') + 'name=orig';
     const headers = { referer: 'https://x.com/' };
     if (authToken && ct0) headers.cookie = `auth_token=${authToken}; ct0=${ct0}`;
@@ -764,7 +773,7 @@ async function parseXWork(url, workId, opts, onProgress) {
       w: dims ? dims.w : 0, h: dims ? dims.h : 0, fmt: fmtOfCt(dl.contentType)
     });
     if (i === 0) {
-      onProgress(2, (dims ? `${dims.w} × ${dims.h}` : '原图') + ' · ' + fmtOfCt(dl.contentType) + (images.length > 1 ? ` · 共 ${images.length} 张` : ''));
+      onProgress(2, (dims ? `${dims.w} × ${dims.h}` : '原图') + ' · ' + fmtOfCt(dl.contentType) + (total > 1 ? ` · 共 ${total} 张` : '') + (total > downloadUrls.length ? `（已截取前 ${downloadUrls.length} 张）` : ''));
     }
   }
   onProgress(3, '作者：' + author);
@@ -779,7 +788,8 @@ async function parseXWork(url, workId, opts, onProgress) {
       handle,
       url
     },
-    images
+    images,
+    total
   };
 }
 

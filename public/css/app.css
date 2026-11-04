@@ -395,15 +395,12 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 .img-grid{max-height:330px;overflow:auto}
 .pick-right{min-width:0}
 .pick-right .img-grid{max-height:250px}
-.thumb-card,.cell{border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:#FCFCFE;position:relative;aspect-ratio:auto}
+.cell{border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:#FCFCFE;position:relative;aspect-ratio:auto}
 .cell{aspect-ratio:1/1;background:#F4F5F9}
-.tc-img{height:62px;display:grid;place-items:center;color:#fff;font-weight:600;font-size:16px;position:relative}
 .cell img{width:100%;height:100%;object-fit:cover;display:block}
-.tc-tag{position:absolute;left:4px;top:4px;font-size:9.5px;background:rgba(20,22,40,.55);color:#fff;border-radius:999px;padding:0 6px;line-height:1.5}
-.tc-dim{font-size:10px;color:var(--text-3);padding:3px 6px;text-align:center;font-variant-numeric:tabular-nums}
-.thumb-card .rm,.cell .del{position:absolute;top:4px;right:4px;width:19px;height:19px;border-radius:50%;border:none;background:rgba(20,22,40,.55);color:#fff;display:none;place-items:center;font-size:11px;line-height:1;cursor:pointer}
-.thumb-card:hover .rm,.cell:hover .del{display:grid}
-.thumb-card .rm:hover,.cell .del:hover{background:var(--red)}
+.cell .del{position:absolute;top:4px;right:4px;width:19px;height:19px;border-radius:50%;border:none;background:rgba(20,22,40,.55);color:#fff;display:none;place-items:center;font-size:11px;line-height:1;cursor:pointer}
+.cell:hover .del{display:grid}
+.cell .del:hover{background:var(--red)}
 .mini-empty{border:1px dashed var(--border-2);border-radius:var(--r-md);padding:26px 14px;text-align:center;color:var(--text-3);font-size:12px;line-height:1.7}
 .pub-badge{position:absolute;left:4px;bottom:4px;background:rgba(22,163,74,.92);color:#fff;font-size:10px;font-weight:700;border-radius:6px;padding:0 6px;line-height:16px}
 .cell.pub{border:2px solid var(--green)}
@@ -412,8 +409,6 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 .cell.on{border:2px solid var(--primary)}
 .cell .ord{position:absolute;top:5px;left:5px;background:var(--primary);color:#fff;font-size:10.5px;font-weight:700;border-radius:6px;padding:0 6px;line-height:17px;display:none}
 .cell.on .ord{display:block}
-.cell .mv{position:absolute;top:4px;right:28px;background:rgba(20,22,40,.55);color:#fff;border:none;border-radius:7px;width:22px;height:22px;display:none;align-items:center;justify-content:center;cursor:pointer}
-.cell:hover .mv{display:flex}
 .sel-strip{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
 .sel-strip:empty{display:none}
 .sel-strip .cell{width:56px;height:56px;aspect-ratio:auto}
@@ -543,27 +538,12 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 @keyframes slide{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
 
 /* ================= 登录 ================= */
-.login-wrap{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:
-  radial-gradient(1000px 500px at 15% -10%,#E9E3F7 0%,transparent 60%),
-  radial-gradient(800px 500px at 110% 110%,#D1D9F4 0%,transparent 55%),var(--bg)}
-.login-card{background:#fff;border:1px solid #fff;border-radius:20px;box-shadow:0 20px 50px -18px rgba(20,22,40,.25);width:min(400px,100%);padding:32px 34px}
-.login-card .brand2{font-size:21px;font-weight:750;margin-bottom:2px}
-.login-card .sub{font-size:12.5px;color:var(--text-3);margin-bottom:22px}
-.login-card .fld{margin-bottom:14px}
-.login-card .btn{width:100%;justify-content:center;margin-top:6px}
 .login-err{background:var(--red-soft);border:1px solid #EAC5C0;color:var(--red);border-radius:var(--r-sm);padding:8px 12px;font-size:12.5px;margin-bottom:12px;display:none}
-.login-foot{margin-top:16px;font-size:11.5px;color:var(--text-3);text-align:center}
 
 /* ================= 账号库 ================= */
 .lib{border:1px solid var(--border);border-radius:var(--r-md);padding:12px 14px;background:#FCFCFE;margin-bottom:10px}
 .lib-t{font-size:12.5px;font-weight:600;margin-bottom:9px;display:flex;align-items:center;gap:7px}
 .lib-t span{font-size:11px;color:var(--text-3);font-weight:400}
-.lib-row{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px;align-items:start;padding:7px 0;font-size:11.5px;border-top:1px dashed var(--border)}
-.lib-row:first-of-type{border-top:none}
-.lib-role{color:var(--text-3);padding-top:2px}
-.lib-chips{display:flex;flex-wrap:wrap;gap:6px}
-.lib-chip{background:#fff;border:1px solid var(--border);border-radius:999px;padding:2px 9px;color:var(--text-2);display:inline-flex;gap:5px;align-items:center}
-.lib-chip b{color:var(--text);font-weight:600}
 .slot{display:grid;grid-template-columns:96px minmax(0,1fr);gap:10px;align-items:center;border:1px solid var(--border);border-radius:var(--r-md);padding:8px 12px;background:#FCFCFE;transition:.15s}
 .slot.err{border-color:#F3B4B4;background:#FFF8F8}
 .slots{display:flex;flex-direction:column;gap:8px}
@@ -637,14 +617,12 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 .foot-hint .hl{color:var(--text-2)}
 
 /* ================= 批量编排页面样式 ================= */
-.batch-page{}
 .batch-layout{display:grid;grid-template-columns:360px minmax(0,1fr);gap:16px;align-items:start}
 .batch-config{position:sticky;top:76px;margin-bottom:0}
 .batch-fields{display:flex;flex-direction:column;gap:16px}
 .batch-section{display:flex;flex-direction:column;gap:12px}
 .batch-section:not(:first-child){border-top:1px solid var(--border);padding-top:14px}
 .batch-section-title{font-size:12.5px;font-weight:600;color:var(--text-2);margin-bottom:8px}
-.batch-template-hint{}
 .batch-links{resize:vertical}
 .batch-link-count{display:flex;flex-wrap:wrap;gap:4px 8px;font-size:12px;font-variant-numeric:tabular-nums}
 .batch-field-error{font-size:12px;color:var(--red);margin-top:4px}
@@ -656,7 +634,6 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 .batch-config-actions{display:flex;flex-wrap:wrap;gap:8px;border-top:1px solid var(--border);padding-top:14px;margin-top:16px}
 .batch-config-actions .btn.primary{flex:1;text-align:center}
 .batch-results{min-width:0;display:flex;flex-direction:column;gap:12px}
-.batch-prerequisite{}
 .batch-output{margin-bottom:0}
 .batch-output-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .batch-state{min-width:0}
@@ -684,7 +661,6 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 .batch-notice svg{flex:none;margin-top:1px}
 .batch-resultbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:11px 15px;border-radius:var(--r-md);border:1px solid var(--border)}
 .batch-result-actions{display:flex;flex-wrap:wrap;gap:8px;margin-left:auto}
-.batch-confirm-mask{}
 .batch-confirm{max-width:520px}
 .batch-mobile-label{display:none}
 @media(max-width:980px){
@@ -858,15 +834,7 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 .dashboard-rate .ring,.dashboard-rate>.hint{align-self:center}
 
 /* 5. 发布动态 release：图文 / 设置 / 提交三张独立卡 */
-.release-compose>.tile-body{display:flex;flex-direction:column;gap:0}
-.release-section{display:flex;flex-direction:column;gap:12px;min-width:0}
-.release-section+.release-section{margin-top:24px;padding-top:24px;border-top:1px solid var(--border)}
-.release-section-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
-.release-section-title{font-size:13px;font-weight:600;line-height:1.6}
-.release-section-head .hint-r{margin-left:auto;font-size:11.5px;font-weight:400;color:var(--text-3);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.release-settings>.tile-body,.release-submit>.tile-body{display:flex;flex-direction:column;gap:16px}
-.release-settings .ctl,.release-settings select{width:100%}
-.release-settings .presets{gap:6px}
+.release-submit>.tile-body{display:flex;flex-direction:column;gap:16px}
 
 /* 6. 发布队列 queue：指标 + 筛选卡 + 分组白卡 */
 
@@ -904,8 +872,6 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 .job-board .card-h.tile-head{margin-bottom:14px}
 
 /* 11. 登录：去渐变壳，单卡 14px */
-.login-wrap{background:var(--bg)}
-.login-card.tile{padding:32px 34px;border:0;border-radius:var(--tile-radius);box-shadow:var(--tile-shadow)}
 
 /* 12. 待发布图片角标（§4）：共用 .pend-badge 视觉，release 只负责定位 */
 .pend-badge,.pub-badge{border-radius:999px}
@@ -921,8 +887,7 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
   .dashboard-stats{grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr))}
   .dashboard-plan,.dashboard-rate{grid-column:span 1}
   .dashboard-recent{grid-column:1/-1}
-  .release-compose{grid-column:1/-1}
-  .release-settings,.release-submit{grid-column:span 1}
+  .release-submit{grid-column:span 1}
   .library-folders,.library-content{grid-column:span 1}
 
   .batch-board .batch-config,.batch-board .batch-results{grid-column:span 1}
@@ -938,8 +903,6 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
   .dashboard-plan{grid-column:span 8}
   .dashboard-rate{grid-column:span 4}
   .dashboard-recent{grid-column:1/-1}
-  .release-compose{grid-column:span 8;grid-row:span 2}
-  .release-settings{grid-column:span 4}
   .release-submit{grid-column:span 4}
   .library-folders{grid-column:span 3}
   .library-content{grid-column:span 9}
@@ -966,12 +929,11 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
   .dashboard-rate>.tile-head{margin-bottom:10px}
   .dashboard-plan,.dashboard-rate,.dashboard-recent{grid-column:1/-1}
 
-  .release-settings,.release-submit,.release-compose{grid-column:1/-1}
+  .release-submit{grid-column:1/-1}
   .library-folders,.library-content{grid-column:1/-1}
   .batch-config,.batch-results{grid-column:1/-1}
   .batch-board .batch-config{position:static;max-height:none;overflow:visible}
   .job-board>.stack{grid-column:1/-1}
-  .login-card.tile{padding:24px}
   .tile-kv{gap:12px}
   .tile-page .btn,.tile-page .tab,.tile-page .chip,.tile-page .pick-pager button{min-height:40px}
   .tile-page .icon-btn{width:40px;height:40px}
@@ -981,7 +943,7 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 /* 16. 触屏常显既有悬停操作，不新增入口 */
 @media(hover:none){
   .lib-frow .icon-btn{opacity:1}
-  .cell .del,.cell .mv,.thumb-card .rm{display:grid}
+  .cell .del{display:grid}
 }
 
 /* 17. 减少动态效果 */
@@ -1005,8 +967,6 @@ textarea.ctl{resize:vertical;line-height:1.7;min-height:44px}
 /* 20. release 四等宽磁贴：待发图文 / 账号与定时设置 / 链接抓取与配图 / 预览与提交
  * 仅覆盖 release-board 的列位，DOM 顺序保持 compose → settings → fetchimg → submit。
  * 1280 以上 compose 占左列并跨两行，fetchimg 才能紧贴 settings 下方（行间仍为 tile-board 24px gap）。 */
-.release-fetchimg>.tile-body{display:flex;flex-direction:column;gap:0;min-width:0}
-.release-fetchimg #img-grid{grid-template-columns:repeat(auto-fill,minmax(92px,1fr))}
 @media(min-width:1280px){
   .release-board>.release-compose{grid-column:1/5;grid-row:1/3}
   .release-board>.release-settings{grid-column:5/9;grid-row:1}

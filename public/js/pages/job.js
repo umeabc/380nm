@@ -1,6 +1,6 @@
 'use strict';
 (async function () {
-  const { $, $$, icon, esc, api, toast, fmtTime, fmtShort, toLocalInput, snippet, publishedImageMap, pubTip } = App;
+  const { $, $$, icon, esc, api, toast, fmtTime, toLocalInput, publishedImageMap, pubTip } = App;
   const STATUS = { pending: '待发布', publishing: '发布中', published: '已发布', failed: '失败', canceled: '已取消' };
   const STATUS_CLS = { pending: 'blue', publishing: 'amber', published: 'green', failed: 'red', canceled: 'gray' };
   const state = { jobs: [], users: [], logs: [], accounts: [], images: [], folders: [], jobEdit: false, modalImages: [], editTopic: null, editTopicEditor: null, editMentions: [], editType: '原创', editSlots: {}, types: [], libAccounts: [] };

@@ -159,14 +159,21 @@ test('有界队列不加载全部源且真实撤销等待', async () => {
 
 test('魔数白名单：heif/avif/svg 等容器在进入解码器前被拒', async () => {
   const { sniffImageFormat } = require('../src/thumbs');
+  const { magicForImage } = require('../src/queue-csv');
   // 合法格式
   assert.equal(sniffImageFormat(Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 1,2,3,4,5,6,7,8])), 'jpeg');
   assert.equal(sniffImageFormat(Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D,0x0A,0x1A,0x0A, 1,2,3,4])), 'png');
   assert.equal(sniffImageFormat(Buffer.from([0x47,0x49,0x46,0x38, 0x39,0x61, 1,2,3,4,5,6])), 'gif');
   assert.equal(sniffImageFormat(Buffer.from([0x42,0x4D, 1,2,3,4,5,6,7,8,9,10])), 'bmp');
   assert.equal(sniffImageFormat(Buffer.from([0x52,0x49,0x46,0x46, 1,2,3,4, 0x57,0x45,0x42,0x50])), 'webp');
+  const webp = Buffer.from('524946460400000057454250', 'hex');
+  assert.equal(sniffImageFormat(webp), magicForImage(webp));
+  assert.equal(sniffImageFormat(Buffer.from('524946460400000057455050', 'hex')), null);
   // 非白名单：heif/avif（ftyp）、svg、tiff、未知
   assert.equal(sniffImageFormat(Buffer.from([0,0,0,0x20,0x66,0x74,0x79,0x70, 0x61,0x76,0x69,0x66])), null);
+  const csvAvif = Buffer.concat([Buffer.from('ftyp'), Buffer.alloc(4), Buffer.from('avif')]);
+  assert.equal(magicForImage(csvAvif), 'avif');
+  assert.equal(sniffImageFormat(csvAvif), null);
   assert.equal(sniffImageFormat(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg">', 'utf8')), null);
   assert.equal(sniffImageFormat(Buffer.from([0x49,0x49,0x2A,0x00, 1,2,3,4,5,6,7,8])), null);
   assert.equal(sniffImageFormat(Buffer.alloc(4)), null);

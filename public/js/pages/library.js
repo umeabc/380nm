@@ -14,6 +14,7 @@
     { k: 'none', label: '未发布' }
   ];
   let marquee = null;
+  let marqueeDragged = false;
   const scopeQ = () => App.state.user && App.state.user.role === 'admin' && App.state.scopeAll ? '?scope=all' : '';
   const isAdminAll = () => App.state.user && App.state.user.role === 'admin' && App.state.scopeAll;
 
@@ -48,11 +49,11 @@
     return state.images.filter((i) =>
       state.libFolder === 'all' ? true : state.libFolder === 'none' ? !i.folderId : i.folderId === state.libFolder);
   }
-  function viewImages() {
+  function viewImages(pub, pend) {
     const base = folderFiltered();
     if (state.pubFilter === 'all') return base;
-    const pub = publishedImageMap(state.jobs);
-    const pend = pendingImageMap(state.jobs);
+    pub = pub || publishedImageMap(state.jobs);
+    pend = pend || pendingImageMap(state.jobs);
     return base.filter((i) => {
       const p = !!pub[i.key];
       const q = !!pend[i.key];
@@ -87,10 +88,6 @@
     $('#btn-batch-export').disabled = !n;
     $('#btn-batch-del').disabled = !n;
   }
-  function clearSel() {
-    state.selectedKeys.clear();
-    renderLibrary();
-  }
   function togglePick(key) {
     if (state.selectedKeys.has(key)) state.selectedKeys.delete(key);
     else state.selectedKeys.add(key);
@@ -110,7 +107,7 @@
     const pendMap = pendingImageMap(state.jobs);
     renderFolderList();
     renderPubFilter(pubMap, pendMap);
-    const items = viewImages();
+    const items = viewImages(pubMap, pendMap);
     const pubCount = items.filter((i) => pubMap[i.key]).length;
     const pendCount = items.filter((i) => pendMap[i.key]).length;
     $('#lib-stats').textContent = items.length
@@ -122,11 +119,10 @@
       const picked = state.selectedKeys.has(img.key);
       return `<div class="cell ${pub ? 'pub' : ''} ${pend ? 'pending' : ''} ${picked ? 'picked' : ''}" data-lib="${esc(img.key)}"
            title="${esc(img.name)}（${fmtTime(img.createdAt)}${pendTip(pend)}${pubTip(pub)}）">
-         <img referrerpolicy="no-referrer" src="${esc(App.imageSrc(img, 240))}" alt="" loading="lazy">
+         <img referrerpolicy="no-referrer" src="${esc(App.imageSrc(img, 240))}" alt="" loading="lazy" title="双击查看大图">
          <span class="selbox" data-check="${esc(img.key)}" title="选择"></span>
          ${pub ? `<span class="pub-badge">已发布${pub.count > 1 ? ' ×' + pub.count : ''}</span>` : ''}
          ${pend ? `<span class="pend-badge">待发布${pend.count > 1 ? ' ×' + pend.count : ''}</span>` : ''}
-         ${!isAdminAll() ? `<button class="mv" data-libmove="${esc(img.key)}" title="移动到文件夹">${icon('layers', 12)}</button>` : ''}
          <button class="del" data-libdel="${esc(img.key)}" title="删除">×</button>
        </div>`;
     }).join('') || '<div class="mini-empty tile-empty">该文件夹暂无图片</div>';
@@ -346,6 +342,7 @@
       if (!marquee.active && dx < 5 && dy < 5) return;
       if (!marquee.active) {
         marquee.active = true;
+        marqueeDragged = true;
         grid.classList.add('selecting');
         marquee.el = document.createElement('div');
         marquee.el.className = 'marquee';
@@ -377,6 +374,7 @@
     };
     grid.addEventListener('mousedown', (e) => {
       if (e.button !== 0) return;
+      if (!(e.detail > 1)) marqueeDragged = false;
       if (e.target.closest('.del, .mv, .selbox, .pub-badge')) return;
       e.preventDefault();
       marquee = { x0: e.clientX, y0: e.clientY, active: false, el: null, box: null };
@@ -455,12 +453,21 @@
       $('#lib-grid').addEventListener('click', (e) => {
         const d = e.target.closest('[data-libdel]');
         if (d) { e.stopPropagation(); return libDelete(d.dataset.libdel); }
-        const m = e.target.closest('[data-libmove]');
-        if (m) { e.stopPropagation(); return openMoveMenu([m.dataset.libmove], e.clientX, e.clientY); }
         const ck = e.target.closest('[data-check]');
         if (ck) { e.stopPropagation(); return togglePick(ck.dataset.check); }
         const cell = e.target.closest('[data-lib]');
-        if (cell && !marquee) togglePick(cell.dataset.lib);
+        if (cell && !marquee && !marqueeDragged) togglePick(cell.dataset.lib);
+      });
+      $('#lib-grid').addEventListener('dblclick', (e) => {
+        if (e.target.closest('.selbox, .del, .mv')) return;
+        const cell = e.target.closest('[data-lib]');
+        if (!cell) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (marquee?.active || marqueeDragged) return;
+        const images = viewImages();
+        const idx = images.findIndex((img) => img.key === cell.dataset.lib);
+        if (idx >= 0) App.openPreview({ images }, idx);
       });
       setupMarquee();
       $('#move-menu').addEventListener('click', (e) => {
@@ -471,7 +478,7 @@
         }
       });
       document.addEventListener('click', (e) => {
-        if (state.moveKeys.length && !e.target.closest('#move-menu') && !e.target.closest('[data-libmove]') && !e.target.closest('#btn-batch-move')) closeMoveMenu();
+        if (state.moveKeys.length && !e.target.closest('#move-menu') && !e.target.closest('#btn-batch-move')) closeMoveMenu();
       });
 
       /* 批量工具条 */

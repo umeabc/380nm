@@ -334,7 +334,7 @@ docker compose up -d
 
 短时回滚：THUMB_ENABLED=0重启，授权仍保留。完整回滚旧镜像/代码时恢复旧src并把静态资源版本继续递增（例如22，不降回20），提示打开页面刷新；不恢复旧db覆盖新任务，无数据迁移。
 
-sharp精确0.34.5，lock保留Windows及linuxmusl optional，Docker安装禁止omit optional；不复制Windows node_modules。基础镜像已由 `node:20-alpine` 升级为 **`node:24-alpine`（当前 v24.22.1）**，两端容器已实测 sharp 转码、缩略图端点与账号/图库数据正常（见 CHANGELOG 2026-10-22）；镜像体积增量、不同 CPU/架构与离线 save/load 仍待部署验证，不能据 Windows 本机成功宣布通过。部署先R2测试机、再local少量页面；正式279图压测与授权B站发布留人工验收。离线部署建议联网CI先构建/转码后save/load；离线重建需预备基础镜像、全部锁定npm包及optional缓存并显式offline验证，无物料必须失败。
+sharp声明^0.35.5、lock锁定0.35.5，lock保留Windows及linuxmusl optional，Docker安装禁止omit optional；不复制Windows node_modules。基础镜像已由 `node:20-alpine` 升级为 **`node:24-alpine`（当前 v24.22.1）**，两端容器已实测 sharp 转码、缩略图端点与账号/图库数据正常（见 CHANGELOG 2026-10-22）；镜像体积增量、不同 CPU/架构与离线 save/load 仍待部署验证，不能据 Windows 本机成功宣布通过。部署先R2测试机、再local少量页面；正式279图压测与授权B站发布留人工验收。离线部署建议联网CI先构建/转码后save/load；离线重建需预备基础镜像、全部锁定npm包及optional缓存并显式offline验证，无物料必须失败。
 
 ## 账号续期、敏感存储与回滚
 

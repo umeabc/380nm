@@ -2,20 +2,10 @@ const fs = require('fs/promises');
 const path = require('path');
 const crypto = require('crypto');
 const sharp = require('sharp');
+const { sniffImageFormat } = require('./image-format');
 
 /** 魔数嗅探：只放行图库实际会出现的格式，避免把 heif/avif/svg/tiff 等容器交给
- *  libvips 解码器（sharp 0.34.x 的 libheif/librsvg 已知存在高危漏洞，且测试机 CPU
- *  不支持 0.35.x 预编译包，故在进入 sharp 之前直接拦截非白名单格式）。 */
-function sniffImageFormat(buf) {
-  if (!buf || buf.length < 12) return null;
-  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return 'jpeg';
-  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return 'png';
-  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return 'gif';
-  if (buf[0] === 0x42 && buf[1] === 0x4D) return 'bmp';
-  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
-      buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return 'webp';
-  return null;
-}
+ *  libvips 解码器。当前 sharp 声明 ^0.35.5、lock 锁定 0.35.5；升级不扩大解码白名单。 */
 const SNIFF_ALLOWED = new Set(['jpeg', 'png', 'gif', 'bmp', 'webp']);
 const { validateKey } = require('./thumb-config');
 sharp.concurrency(1);

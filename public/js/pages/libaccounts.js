@@ -1,6 +1,6 @@
 'use strict';
 (async function () {
-  const { $, $$, icon, esc, api, toast } = App;
+  const { $, icon, esc, api, toast } = App;
   // 已移除「角色」分类：账号库只维护一份人员清单，翻译 / 嵌字共用
   const STATUSES = ['在岗', '离岗'];
   const state = { accounts: [], editingId: null };
